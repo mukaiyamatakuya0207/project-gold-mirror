@@ -2,6 +2,7 @@
 // Gold Mirror – UserNotifications scheduling for credit card billing reminders.
 
 import SwiftUI
+import Combine
 import UserNotifications
 
 // ─────────────────────────────────────────
@@ -68,7 +69,7 @@ final class NotificationManager: ObservableObject {
     // ── Permission ──
     func requestPermission() async {
         let center = UNUserNotificationCenter.current()
-        try? await center.requestAuthorization(options: [.alert, .badge, .sound])
+        _ = try? await center.requestAuthorization(options: [.alert, .badge, .sound])
     }
 
     // ── Schedule notifications for all cards ──
