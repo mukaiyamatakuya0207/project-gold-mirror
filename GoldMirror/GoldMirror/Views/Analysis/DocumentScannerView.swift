@@ -464,24 +464,21 @@ struct LiveDocumentScanner: UIViewControllerRepresentable {
 
     func updateUIViewController(_ uiViewController: UIViewController, context: Context) {}
 
-    class Coordinator: NSObject, DataScannerViewControllerDelegate, UIImagePickerControllerDelegate, UINavigationControllerDelegate {
+    class Coordinator: NSObject, DataScannerViewControllerDelegate,
+                       UIImagePickerControllerDelegate, UINavigationControllerDelegate {
         let onCapture: (UIImage) -> Void
         init(onCapture: @escaping (UIImage) -> Void) { self.onCapture = onCapture }
 
-        // DataScanner: キャプチャボタン
+        // DataScanner: アイテムタップ時にビューをスナップショット撮影
         func dataScanner(_ dataScanner: DataScannerViewController,
                          didTapOn item: RecognizedItem) {
-            // タップで静止画キャプチャ
-            dataScanner.capturePhoto { result in
-                switch result {
-                case .success(let photo):
-                    if let image = photo.previewCGImageRepresentation()
-                        .flatMap({ UIImage(cgImage: $0) }) {
-                        DispatchQueue.main.async { self.onCapture(image) }
-                    }
-                case .failure: break
-                }
+            // DataScannerViewController のビューをレンダリングして UIImage に変換
+            let view = dataScanner.view
+            let renderer = UIGraphicsImageRenderer(size: view.bounds.size)
+            let image = renderer.image { _ in
+                view.drawHierarchy(in: view.bounds, afterScreenUpdates: true)
             }
+            DispatchQueue.main.async { self.onCapture(image) }
         }
 
         // UIImagePicker fallback
