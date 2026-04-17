@@ -105,7 +105,7 @@ struct OCRScanResult: Identifiable, Codable {
     // ユーザーが確認・修正済みか
     var isConfirmed: Bool
 
-    // 全引数を明示するイニシャライザ（nonisolated コンテキストから呼べるようにデフォルト値を持たない）
+    // デフォルト値なし・全引数明示（どのコンテキストからでも呼べる）
     init(
         id: UUID,
         documentType: TaxDocumentType,
@@ -113,25 +113,11 @@ struct OCRScanResult: Identifiable, Codable {
         rawText: String,
         isConfirmed: Bool
     ) {
-        self.id = id
-        self.documentType = documentType
-        self.scannedAt = scannedAt
-        self.rawText = rawText
-        self.isConfirmed = isConfirmed
-    }
-
-    // MainActor コンテキスト（Preview など）用の便利イニシャライザ
-    @MainActor
-    init(
-        documentType: TaxDocumentType = .withholdingSlip,
-        rawText: String = "",
-        isConfirmed: Bool = false
-    ) {
-        self.id = UUID()
-        self.documentType = documentType
-        self.scannedAt = Date()
-        self.rawText = rawText
-        self.isConfirmed = isConfirmed
+        self.id            = id
+        self.documentType  = documentType
+        self.scannedAt     = scannedAt
+        self.rawText       = rawText
+        self.isConfirmed   = isConfirmed
     }
 
     /// 実効税率

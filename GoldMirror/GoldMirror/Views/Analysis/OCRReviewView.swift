@@ -407,12 +407,17 @@ private struct TaxStatCol: View {
 #Preview {
     OCRReviewView(
         result: {
-            var r = OCRScanResult(documentType: .withholdingSlip)
-            r.annualIncome   = 6_800_000
-            r.withholdingTax = 510_000
-            r.deductionTotal = 1_240_000
+            var r = OCRScanResult(
+                id: UUID(),
+                documentType: .withholdingSlip,
+                scannedAt: Date(),
+                rawText: "支払金額 6,800,000\n源泉徴収税額 510,000\n所得控除の額の合計 1,240,000",
+                isConfirmed: false
+            )
+            r.annualIncome    = 6_800_000
+            r.withholdingTax  = 510_000
+            r.deductionTotal  = 1_240_000
             r.socialInsurance = 980_000
-            r.rawText = "支払金額 6,800,000\n源泉徴収税額 510,000\n所得控除の額の合計 1,240,000"
             return r
         }(),
         onConfirm: { _ in }
