@@ -1,9 +1,5 @@
-//
-//  GoldMirrorApp.swift
-//  GoldMirror
-//
-//  Created by TAKUYA MUKAIYAMA on 2026/04/17.
-//
+// MARK: - GoldMirrorApp.swift
+// Gold Mirror – App entry point.
 
 import SwiftUI
 
@@ -11,7 +7,9 @@ import SwiftUI
 struct GoldMirrorApp: App {
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            MainTabView()
+                .preferredColorScheme(.dark)
+                .tint(Color.gmGold)  // Global tint for system controls
         }
     }
 }
