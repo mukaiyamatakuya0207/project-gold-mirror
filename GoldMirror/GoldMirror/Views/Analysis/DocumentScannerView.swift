@@ -88,9 +88,12 @@ struct DocumentScannerView: View {
             // Review sheet
             .sheet(isPresented: $ocrVM.showReviewSheet) {
                 if let result = ocrVM.scanResult {
-                    OCRReviewView(result: result) { confirmed in
-                        ocrVM.confirmAndSave(result: confirmed)
-                    }
+                    OCRReviewView(
+                        result: result,
+                        onConfirm: { confirmed in
+                            ocrVM.confirmAndSave(result: confirmed)
+                        }
+                    )
                     .environmentObject(ocrVM)
                 }
             }

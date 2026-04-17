@@ -137,7 +137,7 @@ struct UserProfile: Codable {
     var annualIncome: Double?       // 年収（OCRまたは手入力）
     var withholdingTax: Double?     // 源泉徴収税額
     var deductionTotal: Double?     // 所得控除合計
-    var fiscalYear: Int             = Calendar.current.component(.year, from: Date())
+    var fiscalYear: Int             = 2025          // Date() をデフォルト値に使うと Swift 6 で警告
     var scanHistory: [OCRScanResult] = []
     var isPublicOnMirror: Bool      = true
 
