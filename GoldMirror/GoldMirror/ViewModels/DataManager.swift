@@ -236,6 +236,19 @@ final class DataManager: ObservableObject {
     }
 
     // ─────────────────────────────────────────
+    // MARK: Transactions (income / expense records)
+    // ─────────────────────────────────────────
+    @Published var transactions: [Transaction] = []
+
+    func addTransaction(_ t: Transaction) {
+        transactions.insert(t, at: 0)
+        // Reflect income/expense on bank balance (first account as default)
+        guard !bankAccounts.isEmpty else { return }
+        let delta = t.type == .income ? t.amount : -t.amount
+        bankAccounts[0].balance += delta
+    }
+
+    // ─────────────────────────────────────────
     // MARK: Helpers
     // ─────────────────────────────────────────
     private func dateForDay(_ day: Int, inMonthOf date: Date) -> Date? {

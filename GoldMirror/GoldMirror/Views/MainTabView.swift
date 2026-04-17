@@ -1,5 +1,5 @@
 // MARK: - MainTabView.swift
-// Gold Mirror – Root tab container with custom gold tab bar.
+// Gold Mirror – Root tab container with NavigationStack-per-tab and custom gold tab bar.
 
 import SwiftUI
 
@@ -11,6 +11,7 @@ enum GMTab: Int, CaseIterable {
     case calendar
     case mirror
     case analysis
+    case settings
 
     var title: String {
         switch self {
@@ -18,6 +19,7 @@ enum GMTab: Int, CaseIterable {
         case .calendar:  return "Calendar"
         case .mirror:    return "Mirror"
         case .analysis:  return "Analysis"
+        case .settings:  return "Settings"
         }
     }
 
@@ -27,6 +29,7 @@ enum GMTab: Int, CaseIterable {
         case .calendar:  return "calendar"
         case .mirror:    return "person.2.fill"
         case .analysis:  return "chart.bar.xaxis"
+        case .settings:  return "gearshape.fill"
         }
     }
 }
@@ -35,84 +38,132 @@ enum GMTab: Int, CaseIterable {
 // MARK: MainTabView
 // ─────────────────────────────────────────
 struct MainTabView: View {
-    @StateObject private var viewModel = AssetViewModel()
-    @EnvironmentObject var dataManager: DataManager
-    @EnvironmentObject var ocrViewModel: OCRViewModel
+    @StateObject private var viewModel    = AssetViewModel()
+    @EnvironmentObject var dataManager:   DataManager
+    @EnvironmentObject var ocrViewModel:  OCRViewModel
     @State private var selectedTab: GMTab = .dashboard
     @Namespace private var tabAnimation
+    @State private var showIncomeExpenseSheet = false
+
+    // Tab bar height constant used by child views to add bottom padding
+    static let tabBarHeight: CGFloat = 83
 
     var body: some View {
         ZStack(alignment: .bottom) {
-            // ── Content Area ──
-            TabView(selection: $selectedTab) {
-                DashboardView()
-                    .tag(GMTab.dashboard)
-                    .environmentObject(dataManager)
+            Color.gmBackground.ignoresSafeArea()
 
-                WealthCalendarView()
-                    .tag(GMTab.calendar)
-                    .environmentObject(dataManager)
-
-                MirrorView()
-                    .tag(GMTab.mirror)
-                    .environmentObject(ocrViewModel)
-
-                AnalysisView()
-                    .tag(GMTab.analysis)
-                    .environmentObject(dataManager)
-                    .environmentObject(ocrViewModel)
-            }
-            // Hide default iOS tab bar – we use our custom one
-            .tabViewStyle(.page(indexDisplayMode: .never))
-            .ignoresSafeArea(edges: .bottom)
-
-            // ── Custom Gold Tab Bar ──
-            GMTabBar(selectedTab: $selectedTab, namespace: tabAnimation)
-        }
-        .environmentObject(viewModel)
-        .background(Color.gmBackground)
-        .preferredColorScheme(.dark)
-    }
-}
-
-// ─────────────────────────────────────────
-// MARK: Custom Tab Bar
-// ─────────────────────────────────────────
-struct GMTabBar: View {
-    @Binding var selectedTab: GMTab
-    var namespace: Namespace.ID
-
-    var body: some View {
-        HStack(spacing: 0) {
-            ForEach(GMTab.allCases, id: \.rawValue) { tab in
-                GMTabBarItem(
-                    tab: tab,
-                    isSelected: selectedTab == tab,
-                    namespace: namespace
-                ) {
-                    withAnimation(.spring(response: 0.35, dampingFraction: 0.72)) {
-                        selectedTab = tab
+            // ── Per-tab NavigationStack content ──
+            Group {
+                switch selectedTab {
+                case .dashboard:
+                    NavigationStack {
+                        DashboardView()
+                            .environmentObject(viewModel)
+                            .environmentObject(dataManager)
+                    }
+                case .calendar:
+                    NavigationStack {
+                        WealthCalendarView()
+                            .environmentObject(dataManager)
+                    }
+                case .mirror:
+                    NavigationStack {
+                        MirrorView()
+                            .environmentObject(viewModel)
+                            .environmentObject(ocrViewModel)
+                    }
+                case .analysis:
+                    NavigationStack {
+                        AnalysisView()
+                            .environmentObject(viewModel)
+                            .environmentObject(dataManager)
+                            .environmentObject(ocrViewModel)
+                    }
+                case .settings:
+                    NavigationStack {
+                        SettingsView()
+                            .environmentObject(dataManager)
+                            .environmentObject(viewModel)
                     }
                 }
             }
-        }
-        .padding(.horizontal, GMSpacing.sm)
-        .padding(.top, GMSpacing.md)
-        .padding(.bottom, 28) // safe area padding
-        .background(
-            ZStack {
-                Color.gmTabBackground
+            // Push content above tab bar
+            .safeAreaInset(edge: .bottom) {
+                Color.clear.frame(height: MainTabView.tabBarHeight)
+            }
 
-                // Top gold separator line
-                VStack {
-                    Rectangle()
-                        .fill(GMGradient.goldHorizontal)
-                        .frame(height: 0.5)
-                    Spacer()
+            // ── Custom Gold Tab Bar (always on top, opaque) ──
+            VStack(spacing: 0) {
+                // Top hairline separator
+                Rectangle()
+                    .fill(GMGradient.goldHorizontal)
+                    .frame(height: 0.5)
+
+                HStack(spacing: 0) {
+                    // Left tabs (dashboard, calendar)
+                    ForEach([GMTab.dashboard, GMTab.calendar], id: \.rawValue) { tab in
+                        GMTabBarItem(
+                            tab: tab,
+                            isSelected: selectedTab == tab,
+                            namespace: tabAnimation
+                        ) {
+                            withAnimation(.spring(response: 0.35, dampingFraction: 0.72)) {
+                                selectedTab = tab
+                            }
+                        }
+                    }
+
+                    // Centre FAB placeholder
+                    Color.clear.frame(width: 72)
+
+                    // Right tabs (mirror, analysis, settings)
+                    ForEach([GMTab.mirror, GMTab.analysis, GMTab.settings], id: \.rawValue) { tab in
+                        GMTabBarItem(
+                            tab: tab,
+                            isSelected: selectedTab == tab,
+                            namespace: tabAnimation
+                        ) {
+                            withAnimation(.spring(response: 0.35, dampingFraction: 0.72)) {
+                                selectedTab = tab
+                            }
+                        }
+                    }
+                }
+                .padding(.top, 10)
+                .padding(.bottom, 28)
+                .background(Color.gmTabBackground)
+            }
+            .shadow(color: Color.black.opacity(0.6), radius: 16, x: 0, y: -4)
+
+            // ── Floating Action Button (centred, elevated above tab bar) ──
+            Button {
+                showIncomeExpenseSheet = true
+            } label: {
+                ZStack {
+                    Circle()
+                        .fill(
+                            LinearGradient(
+                                colors: [Color.gmGoldLight, Color.gmGold, Color.gmGoldDim],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                        .frame(width: 58, height: 58)
+                        .shadow(color: Color.gmGold.opacity(0.55), radius: 14, x: 0, y: 4)
+
+                    Image(systemName: "plus")
+                        .font(.system(size: 24, weight: .bold))
+                        .foregroundStyle(Color.gmBackground)
                 }
             }
-        )
-        .shadow(color: Color.gmGold.opacity(0.08), radius: 20, x: 0, y: -8)
+            .offset(y: -(MainTabView.tabBarHeight - 28))
+            .sheet(isPresented: $showIncomeExpenseSheet) {
+                IncomeExpenseInputView()
+                    .environmentObject(dataManager)
+            }
+        }
+        .environmentObject(viewModel)
+        .ignoresSafeArea(edges: .bottom)
     }
 }
 
@@ -127,28 +178,26 @@ struct GMTabBarItem: View {
 
     var body: some View {
         Button(action: action) {
-            VStack(spacing: GMSpacing.xs) {
+            VStack(spacing: 4) {
                 ZStack {
-                    // Active background pill
                     if isSelected {
                         Capsule()
                             .fill(Color.gmGold.opacity(0.15))
-                            .frame(width: 52, height: 32)
-                            .matchedGeometryEffect(id: "tabBackground", in: namespace)
+                            .frame(width: 48, height: 30)
+                            .matchedGeometryEffect(id: "tabBG", in: namespace)
                     }
 
                     Image(systemName: tab.icon)
-                        .font(.system(size: 20, weight: isSelected ? .semibold : .regular))
+                        .font(.system(size: 19, weight: isSelected ? .semibold : .regular))
                         .foregroundStyle(isSelected ? Color.gmGold : Color.gmTabInactive)
-                        .frame(width: 52, height: 32)
-                        .scaleEffect(isSelected ? 1.1 : 1.0)
+                        .frame(width: 48, height: 30)
+                        .scaleEffect(isSelected ? 1.08 : 1.0)
                         .animation(.spring(response: 0.3, dampingFraction: 0.7), value: isSelected)
                 }
 
                 Text(tab.title)
-                    .font(GMFont.caption(10, weight: isSelected ? .semibold : .regular))
+                    .font(GMFont.caption(9, weight: isSelected ? .semibold : .regular))
                     .foregroundStyle(isSelected ? Color.gmGold : Color.gmTabInactive)
-                    .animation(.easeInOut(duration: 0.2), value: isSelected)
             }
             .frame(maxWidth: .infinity)
         }
