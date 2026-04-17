@@ -6,7 +6,6 @@ import SwiftUI
 struct DashboardView: View {
     @EnvironmentObject var vm: AssetViewModel
     @EnvironmentObject var dm: DataManager
-    @State private var headerParallax: CGFloat = 0
     @State private var showAllBankAccounts = false
     @State private var showAllSecurities   = false
     @State private var showCardTracker     = false
@@ -14,7 +13,6 @@ struct DashboardView: View {
     @State private var showProjection      = false
 
     var body: some View {
-        NavigationStack {
         ZStack {
             // ── Full-screen background ──
             Color.gmBackground.ignoresSafeArea()
@@ -24,7 +22,6 @@ struct DashboardView: View {
                     // 1. Hero Header
                     DashboardHeaderView()
                         .padding(.bottom, GMSpacing.lg)
-                        .ignoresSafeArea(edges: .top)
 
                     // 2. Net Worth Summary Card
                     NetWorthSummaryCard()
@@ -106,22 +103,59 @@ struct DashboardView: View {
                 }
             }
         }
-        .navigationDestination(isPresented: $showCardTracker) {
-            CreditCardTrackerView()
-                .environmentObject(dm)
+        // Use fullScreenCover so NavigationStack is not needed (avoids top gap)
+        .fullScreenCover(isPresented: $showCardTracker) {
+            NavigationStack {
+                CreditCardTrackerView()
+                    .environmentObject(dm)
+                    .environmentObject(vm)
+                    .navigationBarTitleDisplayMode(.inline)
+                    .toolbar {
+                        ToolbarItem(placement: .navigationBarLeading) {
+                            Button {
+                                showCardTracker = false
+                            } label: {
+                                Image(systemName: "chevron.left")
+                                    .foregroundStyle(Color.gmGold)
+                            }
+                        }
+                    }
+            }
         }
-        .navigationDestination(isPresented: $showFixedCost) {
-            FixedCostManagerView()
-                .environmentObject(dm)
+        .fullScreenCover(isPresented: $showFixedCost) {
+            NavigationStack {
+                FixedCostManagerView()
+                    .environmentObject(dm)
+                    .navigationBarTitleDisplayMode(.inline)
+                    .toolbar {
+                        ToolbarItem(placement: .navigationBarLeading) {
+                            Button {
+                                showFixedCost = false
+                            } label: {
+                                Image(systemName: "chevron.left")
+                                    .foregroundStyle(Color.gmGold)
+                            }
+                        }
+                    }
+            }
         }
-        .navigationDestination(isPresented: $showProjection) {
-            ProjectionView()
-                .environmentObject(dm)
+        .fullScreenCover(isPresented: $showProjection) {
+            NavigationStack {
+                ProjectionView()
+                    .environmentObject(dm)
+                    .navigationBarTitleDisplayMode(.inline)
+                    .toolbar {
+                        ToolbarItem(placement: .navigationBarLeading) {
+                            Button {
+                                showProjection = false
+                            } label: {
+                                Image(systemName: "chevron.left")
+                                    .foregroundStyle(Color.gmGold)
+                            }
+                        }
+                    }
+            }
         }
-        .navigationBarHidden(true)
-        .toolbar(.hidden, for: .navigationBar)
-        .toolbarBackground(.hidden, for: .navigationBar)
-        } // NavigationStack
     }
 }
 
@@ -147,84 +181,85 @@ struct DashboardHeaderView: View {
     }
 
     var body: some View {
-        ZStack(alignment: .bottomLeading) {
-            // Background with subtle gold vignette
-            GeometryReader { geo in
-                let topInset = geo.safeAreaInsets.top
-                Rectangle()
+        GeometryReader { geo in
+            let topInset = geo.safeAreaInsets.top
+            ZStack(alignment: .bottomLeading) {
+                // Background with subtle gold vignette – covers status bar area
+                LinearGradient(
+                    colors: [
+                        Color(hex: "#0F0D03"),
+                        Color.gmBackground
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+                .ignoresSafeArea(edges: .top)
+
+                // Decorative gold orb
+                Circle()
                     .fill(
-                        LinearGradient(
-                            colors: [
-                                Color(hex: "#0F0D03"),
-                                Color.gmBackground
-                            ],
-                            startPoint: .top,
-                            endPoint: .bottom
+                        RadialGradient(
+                            colors: [Color.gmGold.opacity(0.25), Color.clear],
+                            center: .center,
+                            startRadius: 0,
+                            endRadius: 120
                         )
                     )
-                    .frame(height: 140 + topInset)
-                    .offset(y: -topInset)
-            }
-            .frame(height: 140)
+                    .frame(width: 240, height: 240)
+                    .offset(x: -60, y: -40)
+                    .blur(radius: 20)
 
-            // Decorative gold orb
-            Circle()
-                .fill(
-                    RadialGradient(
-                        colors: [Color.gmGold.opacity(0.25), Color.clear],
-                        center: .center,
-                        startRadius: 0,
-                        endRadius: 120
-                    )
-                )
-                .frame(width: 240, height: 240)
-                .offset(x: -60, y: -40)
-                .blur(radius: 20)
+                VStack(alignment: .leading, spacing: GMSpacing.xs) {
+                    HStack {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(greetingText)
+                                .font(GMFont.caption(13, weight: .medium))
+                                .foregroundStyle(Color.gmGold.opacity(0.8))
 
-            VStack(alignment: .leading, spacing: GMSpacing.xs) {
-                HStack {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(greetingText)
-                            .font(GMFont.caption(13, weight: .medium))
-                            .foregroundStyle(Color.gmGold.opacity(0.8))
+                            Text("Gold Mirror")
+                                .font(GMFont.display(30, weight: .bold))
+                                .foregroundStyle(GMGradient.goldHorizontal)
+                        }
 
-                        Text("Gold Mirror")
-                            .font(GMFont.display(30, weight: .bold))
-                            .foregroundStyle(GMGradient.goldHorizontal)
-                    }
+                        Spacer()
 
-                    Spacer()
+                        // Notification bell
+                        Button {
+                            // notifications
+                        } label: {
+                            ZStack(alignment: .topTrailing) {
+                                Image(systemName: "bell.fill")
+                                    .font(.system(size: 20, weight: .medium))
+                                    .foregroundStyle(Color.gmTextSecondary)
+                                    .frame(width: 44, height: 44)
+                                    .background(Color.gmSurface)
+                                    .clipShape(Circle())
+                                    .overlay(
+                                        Circle().stroke(Color.gmGoldDim.opacity(0.5), lineWidth: 0.5)
+                                    )
 
-                    // Notification bell
-                    Button {
-                        // notifications
-                    } label: {
-                        ZStack(alignment: .topTrailing) {
-                            Image(systemName: "bell.fill")
-                                .font(.system(size: 20, weight: .medium))
-                                .foregroundStyle(Color.gmTextSecondary)
-                                .frame(width: 44, height: 44)
-                                .background(Color.gmSurface)
-                                .clipShape(Circle())
-                                .overlay(
-                                    Circle().stroke(Color.gmGoldDim.opacity(0.5), lineWidth: 0.5)
-                                )
-
-                            Circle()
-                                .fill(Color.gmGold)
-                                .frame(width: 8, height: 8)
-                                .offset(x: 2, y: -2)
+                                Circle()
+                                    .fill(Color.gmGold)
+                                    .frame(width: 8, height: 8)
+                                    .offset(x: 2, y: -2)
+                            }
                         }
                     }
-                }
 
-                Text(dateString)
-                    .font(GMFont.caption(12))
-                    .foregroundStyle(Color.gmTextTertiary)
+                    Text(dateString)
+                        .font(GMFont.caption(12))
+                        .foregroundStyle(Color.gmTextTertiary)
+                }
+                .padding(.horizontal, GMSpacing.md)
+                .padding(.bottom, GMSpacing.md)
+                .padding(.top, topInset + GMSpacing.sm)
             }
-            .padding(.horizontal, GMSpacing.md)
-            .padding(.bottom, GMSpacing.md)
+            .frame(width: geo.size.width, height: 140 + topInset)
         }
+        .frame(height: 140 + (UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .first?.windows.first?.safeAreaInsets.top ?? 44))
+        .ignoresSafeArea(edges: .top)
     }
 }
 
@@ -738,14 +773,6 @@ struct DashboardQuickActions: View {
     @Binding var showCardTracker: Bool
     @Binding var showFixedCost:   Bool
     @Binding var showProjection:  Bool
-
-    private struct ActionItem {
-        let icon: String
-        let label: String
-        let sublabel: String
-        let color: Color
-        let action: () -> Void
-    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: GMSpacing.sm) {
