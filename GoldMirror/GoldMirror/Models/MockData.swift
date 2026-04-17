@@ -166,6 +166,116 @@ struct MockData {
             tagline: "36歳・FIRE目標42歳"
         )
     ]
+
+    // ─────────────────────────────────────────
+    // MARK: Fixed Costs
+    // ─────────────────────────────────────────
+    static let fixedCosts: [FixedCost] = [
+        FixedCost(
+            name: "家賃",
+            amount: 148_000,
+            billingDay: 27,
+            category: .rent,
+            memo: "東京都港区 1LDK"
+        ),
+        FixedCost(
+            name: "電気・ガス",
+            amount: 12_000,
+            billingDay: 10,
+            category: .utilities,
+            memo: "東京電力 + 東京ガス"
+        ),
+        FixedCost(
+            name: "生命保険",
+            amount: 24_500,
+            billingDay: 1,
+            category: .insurance,
+            memo: "住友生命 スミセイ"
+        ),
+        FixedCost(
+            name: "奨学金返済",
+            amount: 16_000,
+            billingDay: 27,
+            category: .loan,
+            memo: "日本学生支援機構"
+        ),
+        FixedCost(
+            name: "英会話スクール",
+            amount: 29_800,
+            billingDay: 15,
+            category: .education,
+            memo: "オンライン英会話 毎週2回"
+        )
+    ]
+
+    // ─────────────────────────────────────────
+    // MARK: Subscriptions
+    // ─────────────────────────────────────────
+    static let subscriptions: [Subscription] = [
+        Subscription(
+            name: "Netflix",
+            amount: 1_980,
+            billingDay: 5,
+            billingCycle: .monthly,
+            contractEndDate: nil,
+            iconName: "play.rectangle.fill",
+            accentColorHex: "#E50914"
+        ),
+        Subscription(
+            name: "Apple One",
+            amount: 1_200,
+            billingDay: 14,
+            billingCycle: .monthly,
+            contractEndDate: nil,
+            iconName: "applelogo",
+            accentColorHex: "#A8A8A8"
+        ),
+        Subscription(
+            name: "Spotify",
+            amount: 980,
+            billingDay: 8,
+            billingCycle: .monthly,
+            contractEndDate: nil,
+            iconName: "music.note",
+            accentColorHex: "#1DB954"
+        ),
+        Subscription(
+            name: "ChatGPT Plus",
+            amount: 3_000,
+            billingDay: 20,
+            billingCycle: .monthly,
+            contractEndDate: nil,
+            iconName: "brain.head.profile",
+            accentColorHex: "#10A37F"
+        ),
+        Subscription(
+            name: "Adobe CC",
+            amount: 6_480,
+            billingDay: 3,
+            billingCycle: .monthly,
+            contractEndDate: nil,
+            iconName: "paintbrush.fill",
+            accentColorHex: "#FF0000"
+        ),
+        Subscription(
+            name: "iCloud 2TB",
+            amount: 1_300,
+            billingDay: 22,
+            billingCycle: .monthly,
+            contractEndDate: nil,
+            iconName: "icloud.fill",
+            accentColorHex: "#4FC3F7"
+        ),
+        Subscription(
+            name: "日経電子版",
+            amount: 4_277,
+            billingDay: 1,
+            billingCycle: .monthly,
+            contractEndDate: nil,
+            iconName: "newspaper.fill",
+            accentColorHex: "#D4AF37"
+        )
+    ]
 }
 
 // SNS投稿モデル

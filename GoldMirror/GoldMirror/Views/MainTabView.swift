@@ -36,6 +36,7 @@ enum GMTab: Int, CaseIterable {
 // ─────────────────────────────────────────
 struct MainTabView: View {
     @StateObject private var viewModel = AssetViewModel()
+    @EnvironmentObject var dataManager: DataManager
     @State private var selectedTab: GMTab = .dashboard
     @Namespace private var tabAnimation
 
@@ -45,15 +46,18 @@ struct MainTabView: View {
             TabView(selection: $selectedTab) {
                 DashboardView()
                     .tag(GMTab.dashboard)
+                    .environmentObject(dataManager)
 
                 CalendarView()
                     .tag(GMTab.calendar)
+                    .environmentObject(dataManager)
 
                 MirrorView()
                     .tag(GMTab.mirror)
 
                 AnalysisView()
                     .tag(GMTab.analysis)
+                    .environmentObject(dataManager)
             }
             // Hide default iOS tab bar – we use our custom one
             .tabViewStyle(.page(indexDisplayMode: .never))
@@ -154,4 +158,5 @@ struct GMTabBarItem: View {
 // ─────────────────────────────────────────
 #Preview {
     MainTabView()
+        .environmentObject(DataManager())
 }
