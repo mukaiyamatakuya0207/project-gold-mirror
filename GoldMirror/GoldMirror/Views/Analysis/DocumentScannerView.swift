@@ -472,11 +472,12 @@ struct LiveDocumentScanner: UIViewControllerRepresentable {
         // DataScanner: アイテムタップ時にビューをスナップショット撮影
         func dataScanner(_ dataScanner: DataScannerViewController,
                          didTapOn item: RecognizedItem) {
-            // DataScannerViewController のビューをレンダリングして UIImage に変換
-            let view = dataScanner.view
-            let renderer = UIGraphicsImageRenderer(size: view.bounds.size)
+            // view は UIView? なので安全にアンラップ
+            guard let view = dataScanner.viewIfLoaded else { return }
+            let bounds = view.bounds
+            let renderer = UIGraphicsImageRenderer(size: bounds.size)
             let image = renderer.image { _ in
-                view.drawHierarchy(in: view.bounds, afterScreenUpdates: true)
+                view.drawHierarchy(in: bounds, afterScreenUpdates: true)
             }
             DispatchQueue.main.async { self.onCapture(image) }
         }
