@@ -24,6 +24,7 @@ struct DashboardView: View {
                     // 1. Hero Header
                     DashboardHeaderView()
                         .padding(.bottom, GMSpacing.lg)
+                        .ignoresSafeArea(edges: .top)
 
                     // 2. Net Worth Summary Card
                     NetWorthSummaryCard()
@@ -118,6 +119,8 @@ struct DashboardView: View {
                 .environmentObject(dm)
         }
         .navigationBarHidden(true)
+        .toolbar(.hidden, for: .navigationBar)
+        .toolbarBackground(.hidden, for: .navigationBar)
         } // NavigationStack
     }
 }
@@ -146,18 +149,23 @@ struct DashboardHeaderView: View {
     var body: some View {
         ZStack(alignment: .bottomLeading) {
             // Background with subtle gold vignette
-            Rectangle()
-                .fill(
-                    LinearGradient(
-                        colors: [
-                            Color(hex: "#0F0D03"),
-                            Color.gmBackground
-                        ],
-                        startPoint: .top,
-                        endPoint: .bottom
+            GeometryReader { geo in
+                let topInset = geo.safeAreaInsets.top
+                Rectangle()
+                    .fill(
+                        LinearGradient(
+                            colors: [
+                                Color(hex: "#0F0D03"),
+                                Color.gmBackground
+                            ],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
                     )
-                )
-                .frame(height: 140)
+                    .frame(height: 140 + topInset)
+                    .offset(y: -topInset)
+            }
+            .frame(height: 140)
 
             // Decorative gold orb
             Circle()
