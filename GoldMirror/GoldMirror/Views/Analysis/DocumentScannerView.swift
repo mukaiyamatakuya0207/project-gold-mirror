@@ -71,16 +71,19 @@ struct DocumentScannerView: View {
             .navigationBarHidden(true)
             // Image picker
             .sheet(isPresented: $showImagePicker) {
-                GMImagePicker { image in
+                GMImagePicker(onSelect: { image in
                     ocrVM.recognizeText(from: image, documentType: selectedDocType)
-                }
+                })
             }
             // Live scanner
             .fullScreenCover(isPresented: $showLiveScanner) {
-                LiveDocumentScanner(docType: selectedDocType) { image in
-                    showLiveScanner = false
-                    ocrVM.recognizeText(from: image, documentType: selectedDocType)
-                }
+                LiveDocumentScanner(
+                    docType: selectedDocType,
+                    onCapture: { image in
+                        showLiveScanner = false
+                        ocrVM.recognizeText(from: image, documentType: selectedDocType)
+                    }
+                )
             }
             // Review sheet
             .sheet(isPresented: $ocrVM.showReviewSheet) {

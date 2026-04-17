@@ -105,16 +105,31 @@ struct OCRScanResult: Identifiable, Codable {
     // ユーザーが確認・修正済みか
     var isConfirmed: Bool
 
+    // 全引数を明示するイニシャライザ（nonisolated コンテキストから呼べるようにデフォルト値を持たない）
     init(
-        id: UUID = UUID(),
-        documentType: TaxDocumentType = .withholdingSlip,
-        scannedAt: Date = Date(),
-        rawText: String = "",
-        isConfirmed: Bool = false
+        id: UUID,
+        documentType: TaxDocumentType,
+        scannedAt: Date,
+        rawText: String,
+        isConfirmed: Bool
     ) {
         self.id = id
         self.documentType = documentType
         self.scannedAt = scannedAt
+        self.rawText = rawText
+        self.isConfirmed = isConfirmed
+    }
+
+    // MainActor コンテキスト（Preview など）用の便利イニシャライザ
+    @MainActor
+    init(
+        documentType: TaxDocumentType = .withholdingSlip,
+        rawText: String = "",
+        isConfirmed: Bool = false
+    ) {
+        self.id = UUID()
+        self.documentType = documentType
+        self.scannedAt = Date()
         self.rawText = rawText
         self.isConfirmed = isConfirmed
     }

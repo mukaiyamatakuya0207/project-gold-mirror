@@ -72,10 +72,12 @@ final class OCRViewModel: ObservableObject {
                 let observations = request.results ?? []
 
                 // ── 純粋関数（nonisolated）で処理 ──
-                let fullText = OCRViewModel.buildFullText(from: observations)
-                let result   = OCRViewModel.buildScanResult(
+                let fullText  = OCRViewModel.buildFullText(from: observations)
+                let now       = Date()   // Date() は nonisolated コンテキストでも安全
+                let result    = OCRViewModel.buildScanResult(
                     documentType: documentType,
-                    fullText: fullText
+                    fullText: fullText,
+                    scannedAt: now
                 )
 
                 await MainActor.run {
@@ -109,12 +111,14 @@ final class OCRViewModel: ObservableObject {
     // ─────────────────────────────────────────
     nonisolated static func buildScanResult(
         documentType: TaxDocumentType,
-        fullText: String
+        fullText: String,
+        scannedAt: Date
     ) -> OCRScanResult {
-        // ローカル変数として構築し、完成後に返す（inout キャプチャを避ける）
+        // 全引数を明示 → @MainActor な Date() デフォルト引数を使わずに済む
         var result = OCRScanResult(
+            id: UUID(),
             documentType: documentType,
-            scannedAt: Date(),
+            scannedAt: scannedAt,
             rawText: fullText,
             isConfirmed: false
         )
