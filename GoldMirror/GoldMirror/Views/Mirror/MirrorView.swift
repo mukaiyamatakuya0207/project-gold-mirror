@@ -1,11 +1,13 @@
 // MARK: - MirrorView.swift
 // Gold Mirror – SNS-style "Mirror" timeline.
 // Shows anonymized peer asset snapshots as a motivational social feed.
+// Now integrates OCRViewModel to display your income rank badge.
 
 import SwiftUI
 
 struct MirrorView: View {
     @EnvironmentObject var vm: AssetViewModel
+    @EnvironmentObject var ocrVM: OCRViewModel
     @State private var showCompose = false
 
     var body: some View {
@@ -21,7 +23,14 @@ struct MirrorView: View {
                     // My Snapshot Card (pinned at top)
                     MySnapshotCard()
                         .padding(.horizontal, GMSpacing.md)
-                        .padding(.bottom, GMSpacing.lg)
+                        .padding(.bottom, GMSpacing.md)
+
+                    // Income Rank Badge (visible if OCR scan has been confirmed)
+                    if ocrVM.userProfile.annualIncome != nil {
+                        IncomeRankBannerCard(profile: ocrVM.userProfile)
+                            .padding(.horizontal, GMSpacing.md)
+                            .padding(.bottom, GMSpacing.lg)
+                    }
 
                     // Divider with label
                     HStack(spacing: GMSpacing.sm) {
@@ -77,7 +86,73 @@ struct MirrorView: View {
         }
         .sheet(isPresented: $showCompose) {
             ComposePostView()
+                .environmentObject(ocrVM)
         }
+    }
+}
+
+// ─────────────────────────────────────────
+// MARK: Income Rank Banner Card
+// ─────────────────────────────────────────
+struct IncomeRankBannerCard: View {
+    let profile: UserProfile
+
+    var body: some View {
+        HStack(spacing: GMSpacing.md) {
+            // Badge emoji
+            Text(profile.incomeRank.badge)
+                .font(.system(size: 40))
+
+            VStack(alignment: .leading, spacing: GMSpacing.xs) {
+                Text("あなたの年収ランク")
+                    .font(GMFont.caption(11, weight: .medium))
+                    .foregroundStyle(Color.gmTextTertiary)
+                Text(profile.incomeRank.rawValue)
+                    .font(GMFont.heading(18, weight: .bold))
+                    .foregroundStyle(profile.incomeRank.color)
+                Text(profile.incomeRank.topPercent)
+                    .font(GMFont.caption(11))
+                    .foregroundStyle(Color.gmTextTertiary)
+            }
+
+            Spacer()
+
+            VStack(alignment: .trailing, spacing: GMSpacing.xs) {
+                if let income = profile.annualIncome {
+                    Text("年収")
+                        .font(GMFont.caption(10))
+                        .foregroundStyle(Color.gmTextTertiary)
+                    Text(income.jpyCompact)
+                        .font(GMFont.mono(16, weight: .bold))
+                        .foregroundStyle(Color.gmTextPrimary)
+                }
+                // Confirmed badge
+                HStack(spacing: 3) {
+                    Image(systemName: "checkmark.seal.fill")
+                        .font(.system(size: 11))
+                        .foregroundStyle(Color.gmPositive)
+                    Text("OCR確認済み")
+                        .font(GMFont.caption(10))
+                        .foregroundStyle(Color.gmPositive)
+                }
+            }
+        }
+        .padding(GMSpacing.md)
+        .background(
+            RoundedRectangle(cornerRadius: GMRadius.lg)
+                .fill(
+                    LinearGradient(
+                        colors: [profile.incomeRank.color.opacity(0.10), Color(hex: "#0F0F0F")],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: GMRadius.lg)
+                        .strokeBorder(profile.incomeRank.color.opacity(0.35), lineWidth: 0.8)
+                )
+        )
+        .gmGoldGlow(radius: 12, opacity: 0.15)
     }
 }
 
@@ -383,10 +458,11 @@ struct MirrorPostCard: View {
 }
 
 // ─────────────────────────────────────────
-// MARK: Compose Post Sheet (Stub)
+// MARK: Compose Post Sheet
 // ─────────────────────────────────────────
 struct ComposePostView: View {
     @Environment(\.dismiss) var dismiss
+    @EnvironmentObject var ocrVM: OCRViewModel
 
     var body: some View {
         ZStack {
@@ -407,6 +483,12 @@ struct ComposePostView: View {
                 }
                 .padding(GMSpacing.md)
 
+                // Income rank preview if available
+                if ocrVM.userProfile.annualIncome != nil {
+                    IncomeRankBannerCard(profile: ocrVM.userProfile)
+                        .padding(.horizontal, GMSpacing.md)
+                }
+
                 Spacer()
 
                 Text("投稿機能は近日公開予定")
@@ -426,4 +508,5 @@ struct ComposePostView: View {
 #Preview {
     MirrorView()
         .environmentObject(AssetViewModel())
+        .environmentObject(OCRViewModel())
 }
