@@ -35,16 +35,18 @@ struct DocumentScannerView: View {
                         ScanZoneView(
                             animatePulse: $animatePulse,
                             isProcessing: ocrVM.isProcessing,
-                            progress: ocrVM.recognitionProgress
-                        ) {
-                            if ocrVM.isScannerAvailable {
-                                showLiveScanner = true
-                            } else {
+                            progress: ocrVM.recognitionProgress,
+                            onCamera: {
+                                if ocrVM.isScannerAvailable {
+                                    showLiveScanner = true
+                                } else {
+                                    showImagePicker = true
+                                }
+                            },
+                            onLibrary: {
                                 showImagePicker = true
                             }
-                        } onLibrary: {
-                            showImagePicker = true
-                        }
+                        )
                         .padding(.horizontal, GMSpacing.md)
                         .onAppear { withAnimation(.easeInOut(duration: 1.5).repeatForever()) { animatePulse = true } }
 

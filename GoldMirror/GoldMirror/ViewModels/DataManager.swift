@@ -64,7 +64,6 @@ final class DataManager: ObservableObject {
     var nextBillingSummary: NextBillingSummary? {
         let calendar = Calendar.current
         let today = Date()
-        let todayDay = calendar.component(.day, from: today)
 
         // 今月・来月の引き落とし日を候補として収集
         var candidates: [(daysUntil: Int, day: Int, date: Date)] = []

@@ -1,6 +1,10 @@
 // MARK: - OCRViewModel.swift
 // Gold Mirror – Vision & VisionKit OCR engine.
 // Handles document scanning, text recognition, and financial field extraction.
+//
+// Swift 6 concurrency fixes:
+//  - buildFullText / extractFields are nonisolated (pure functions, no actor state)
+//  - Task.detached uses value-type local copy of result (no inout capture)
 
 import SwiftUI
 import Vision
@@ -14,14 +18,14 @@ import Combine
 final class OCRViewModel: ObservableObject {
 
     // ── State ──
-    @Published var scanResult: OCRScanResult?       // 最新のスキャン結果
+    @Published var scanResult: OCRScanResult?
     @Published var isScanning: Bool      = false
     @Published var isProcessing: Bool    = false
     @Published var errorMessage: String? = nil
     @Published var showReviewSheet: Bool = false
     @Published var showScanner: Bool     = false
 
-    // ── User Profile (shared via DataManager) ──
+    // ── User Profile ──
     @Published var userProfile: UserProfile = UserProfile()
 
     // ── Recognition Progress (0.0 〜 1.0) ──
@@ -40,45 +44,50 @@ final class OCRViewModel: ObservableObject {
         recognitionProgress = 0.0
         errorMessage = nil
 
-        // バックグラウンドで実行
+        // ── バックグラウンドタスク ──
+        // NOTE: Task.detached 内では @MainActor の self を直接操作できないため
+        //       await MainActor.run { } を使って UI 更新をメインスレッドに戻す。
+        //       inout 引数は並行コード内でキャプチャできないため、
+        //       OCRScanResult をローカル var で扱い完成後に返す。
         Task.detached(priority: .userInitiated) { [weak self] in
             guard let self else { return }
 
             let request = VNRecognizeTextRequest()
-            request.recognitionLevel        = .accurate          // 高精度モード
-            request.recognitionLanguages    = ["ja-JP", "en-US"] // 日本語優先
-            request.usesLanguageCorrection  = true
-            request.minimumTextHeight       = 0.01               // 小さい文字も拾う
+            request.recognitionLevel       = .accurate
+            request.recognitionLanguages   = ["ja-JP", "en-US"]
+            request.usesLanguageCorrection = true
+            request.minimumTextHeight      = 0.01
 
-            // プログレス通知
-            request.progressHandler = { _, progress, _ in
-                Task { @MainActor in self.recognitionProgress = progress }
+            // プログレス通知（weak self でキャプチャ）
+            request.progressHandler = { [weak self] _, progress, _ in
+                guard let self else { return }
+                Task { @MainActor in
+                    self.recognitionProgress = progress
+                }
             }
 
             let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])
             do {
                 try handler.perform([request])
                 let observations = request.results ?? []
-                let fullText = Self.buildFullText(from: observations)
 
-                // 抽出処理
-                var result = OCRScanResult(
+                // ── 純粋関数（nonisolated）で処理 ──
+                let fullText = OCRViewModel.buildFullText(from: observations)
+                let result   = OCRViewModel.buildScanResult(
                     documentType: documentType,
-                    scannedAt: Date(),
-                    rawText: fullText,
-                    isConfirmed: false
+                    fullText: fullText
                 )
-                Self.extractFields(from: fullText, into: &result)
 
                 await MainActor.run {
-                    self.scanResult      = result
-                    self.isProcessing    = false
+                    self.scanResult          = result
+                    self.isProcessing        = false
                     self.recognitionProgress = 1.0
-                    self.showReviewSheet = true
+                    self.showReviewSheet     = true
                 }
             } catch {
+                let msg = error.localizedDescription
                 await MainActor.run {
-                    self.errorMessage = "テキスト認識エラー: \(error.localizedDescription)"
+                    self.errorMessage = "テキスト認識エラー: \(msg)"
                     self.isProcessing = false
                 }
             }
@@ -87,17 +96,36 @@ final class OCRViewModel: ObservableObject {
 
     // ─────────────────────────────────────────
     // MARK: Build Full Text from Observations
+    // nonisolated = MainActor の外（バックグラウンド）から呼び出し可能
     // ─────────────────────────────────────────
-    private static func buildFullText(from observations: [VNRecognizedTextObservation]) -> String {
+    nonisolated static func buildFullText(from observations: [VNRecognizedTextObservation]) -> String {
         observations
             .compactMap { $0.topCandidates(1).first?.string }
             .joined(separator: "\n")
     }
 
     // ─────────────────────────────────────────
-    // MARK: Field Extraction Logic
+    // MARK: Build OCRScanResult (value-type, no inout)
     // ─────────────────────────────────────────
-    static func extractFields(from text: String, into result: inout OCRScanResult) {
+    nonisolated static func buildScanResult(
+        documentType: TaxDocumentType,
+        fullText: String
+    ) -> OCRScanResult {
+        // ローカル変数として構築し、完成後に返す（inout キャプチャを避ける）
+        var result = OCRScanResult(
+            documentType: documentType,
+            scannedAt: Date(),
+            rawText: fullText,
+            isConfirmed: false
+        )
+        extractFields(from: fullText, into: &result)
+        return result
+    }
+
+    // ─────────────────────────────────────────
+    // MARK: Field Extraction Logic (nonisolated)
+    // ─────────────────────────────────────────
+    nonisolated static func extractFields(from text: String, into result: inout OCRScanResult) {
         let lines = text.components(separatedBy: "\n")
 
         for (i, line) in lines.enumerated() {
@@ -108,7 +136,7 @@ final class OCRViewModel: ObservableObject {
                 if let amount = extractNumber(from: trimmed) {
                     result.annualIncome = amount
                 } else if i + 1 < lines.count,
-                          let amount = extractNumber(from: lines[i+1]) {
+                          let amount = extractNumber(from: lines[i + 1]) {
                     result.annualIncome = amount
                 }
             }
@@ -118,7 +146,7 @@ final class OCRViewModel: ObservableObject {
                 if let amount = extractNumber(from: trimmed) {
                     result.deductionTotal = amount
                 } else if i + 1 < lines.count,
-                          let amount = extractNumber(from: lines[i+1]) {
+                          let amount = extractNumber(from: lines[i + 1]) {
                     result.deductionTotal = amount
                 }
             }
@@ -128,7 +156,7 @@ final class OCRViewModel: ObservableObject {
                 if let amount = extractNumber(from: trimmed) {
                     result.withholdingTax = amount
                 } else if i + 1 < lines.count,
-                          let amount = extractNumber(from: lines[i+1]) {
+                          let amount = extractNumber(from: lines[i + 1]) {
                     result.withholdingTax = amount
                 }
             }
@@ -157,28 +185,24 @@ final class OCRViewModel: ObservableObject {
     }
 
     // ─────────────────────────────────────────
-    // MARK: Helpers
+    // MARK: Helpers (nonisolated)
     // ─────────────────────────────────────────
-
-    /// 文字列に複数キーワードのいずれかが含まれているか
-    private static func containsAny(_ text: String, keywords: [String]) -> Bool {
+    nonisolated private static func containsAny(_ text: String, keywords: [String]) -> Bool {
         keywords.contains { text.contains($0) }
     }
 
-    /// 文字列から最初に見つかる数値（カンマ区切り対応）を抽出
-    static func extractNumber(from text: String) -> Double? {
-        // カンマ、円記号、空白を除去してから数字を抽出
+    nonisolated static func extractNumber(from text: String) -> Double? {
         let cleaned = text
             .replacingOccurrences(of: ",", with: "")
-            .replacingOccurrences(of: "，", with: "")  // 全角カンマ
+            .replacingOccurrences(of: "，", with: "")
             .replacingOccurrences(of: "¥", with: "")
             .replacingOccurrences(of: "￥", with: "")
             .replacingOccurrences(of: " ", with: "")
 
-        // 正規表現で数値を抽出（5桁以上の数値を対象）
         let pattern = #"(\d{5,})"#
         if let regex = try? NSRegularExpression(pattern: pattern),
-           let match = regex.firstMatch(in: cleaned, range: NSRange(cleaned.startIndex..., in: cleaned)),
+           let match = regex.firstMatch(in: cleaned,
+                                        range: NSRange(cleaned.startIndex..., in: cleaned)),
            let range = Range(match.range(at: 1), in: cleaned) {
             return Double(cleaned[range])
         }
@@ -192,19 +216,12 @@ final class OCRViewModel: ObservableObject {
         var confirmed = result
         confirmed.isConfirmed = true
 
-        // UserProfileに反映
-        if let income = confirmed.annualIncome {
-            userProfile.annualIncome = income
-        }
-        if let tax = confirmed.withholdingTax {
-            userProfile.withholdingTax = tax
-        }
-        if let deduction = confirmed.deductionTotal {
-            userProfile.deductionTotal = deduction
-        }
+        if let income    = confirmed.annualIncome    { userProfile.annualIncome    = income    }
+        if let tax       = confirmed.withholdingTax  { userProfile.withholdingTax  = tax       }
+        if let deduction = confirmed.deductionTotal  { userProfile.deductionTotal  = deduction }
 
         userProfile.scanHistory.append(confirmed)
-        scanResult    = confirmed
+        scanResult      = confirmed
         showReviewSheet = false
     }
 
@@ -212,12 +229,7 @@ final class OCRViewModel: ObservableObject {
     // MARK: VisionKit availability check
     // ─────────────────────────────────────────
     var isScannerAvailable: Bool {
-        DataScannerViewController.isAvported &&
+        DataScannerViewController.isSupported &&
         DataScannerViewController.isAvailable
     }
-}
-
-// DataScannerViewController の typo を修正するための拡張
-private extension DataScannerViewController {
-    static var isAvported: Bool { isSupported }
 }
