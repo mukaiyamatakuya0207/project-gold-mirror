@@ -37,6 +37,7 @@ enum TransactionCategory: String, CaseIterable {
     case utilities = "光熱費"
     case entertainment = "娯楽"
     case health    = "医療"
+    case assetImpairment = "資産評価換え（減損）"
     case other_ex  = "その他支出"
 
     var icon: String {
@@ -51,6 +52,7 @@ enum TransactionCategory: String, CaseIterable {
         case .utilities:    return "bolt.fill"
         case .entertainment: return "gamecontroller.fill"
         case .health:       return "cross.fill"
+        case .assetImpairment: return "chart.line.downtrend.xyaxis"
         case .other_ex:     return "ellipsis.circle.fill"
         }
     }
@@ -65,6 +67,7 @@ enum TransactionCategory: String, CaseIterable {
         case .utilities:   return Color(hex: "#FFD54F")
         case .entertainment: return Color(hex: "#A5D6A7")
         case .health:      return Color(hex: "#EF9A9A")
+        case .assetImpairment: return Color(hex: "#B86BFF")
         case .other_ex:    return Color.gmTextSecondary
         }
     }
@@ -73,7 +76,7 @@ enum TransactionCategory: String, CaseIterable {
         [.salary, .bonus, .investment, .other_in]
     }
     static var expenseCategories: [TransactionCategory] {
-        [.food, .transport, .shopping, .utilities, .entertainment, .health, .other_ex]
+        [.food, .transport, .shopping, .utilities, .entertainment, .health, .assetImpairment, .other_ex]
     }
 }
 
@@ -97,6 +100,23 @@ enum PaymentMethod: String, CaseIterable {
     }
 }
 
+enum IncomeDestinationKind {
+    case bank
+    case securities
+}
+
+enum AssetAccountKind {
+    case bank
+    case securities
+
+    var title: String {
+        switch self {
+        case .bank: return "銀行口座"
+        case .securities: return "証券口座"
+        }
+    }
+}
+
 struct Transaction: Identifiable {
     let id = UUID()
     var type: TransactionType
@@ -107,6 +127,13 @@ struct Transaction: Identifiable {
     var paymentMethod: PaymentMethod = .cash
     var creditCardID: UUID? = nil
     var creditCardName: String? = nil
+    var bankAccountID: UUID? = nil
+    var bankAccountName: String? = nil
+    var securitiesAccountID: UUID? = nil
+    var securitiesAccountName: String? = nil
+    var incomeDestinationKind: IncomeDestinationKind = .bank
+    var isAssetAdjustment: Bool = false
+    var assetAdjustmentTargetKind: AssetAccountKind? = nil
 }
 
 // ─────────────────────────────────────────
@@ -125,6 +152,11 @@ struct IncomeExpenseInputView: View {
     @State private var savedAnimation = false
     @State private var selectedPaymentMethod: PaymentMethod = .cash
     @State private var selectedCreditCardID: UUID?
+    @State private var selectedIncomeBankAccountID: UUID?
+    @State private var selectedIncomeSecuritiesAccountID: UUID?
+    @State private var selectedAdjustmentTargetKind: AssetAccountKind = .securities
+    @State private var selectedAdjustmentBankAccountID: UUID?
+    @State private var selectedAdjustmentSecuritiesAccountID: UUID?
 
     private var categories: [TransactionCategory] {
         transactionType == .income ? TransactionCategory.incomeCategories : TransactionCategory.expenseCategories
@@ -133,7 +165,11 @@ struct IncomeExpenseInputView: View {
     private var parsedAmount: Double { Double(amountText.replacingOccurrences(of: ",", with: "")) ?? 0 }
 
     private var needsCreditCardSelection: Bool {
-        transactionType == .expense && selectedPaymentMethod == .creditCard
+        transactionType == .expense && selectedPaymentMethod == .creditCard && !isAssetAdjustment
+    }
+
+    private var isAssetAdjustment: Bool {
+        transactionType == .expense && selectedCategory == .assetImpairment
     }
 
     private var formattedAmount: String {
@@ -157,10 +193,16 @@ struct IncomeExpenseInputView: View {
                                 Button {
                                     withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
                                         transactionType = t
-                                        // reset category to first of that type
-                                        selectedCategory = categories.first ?? .food
+                                        selectedCategory = (t == .income
+                                                            ? TransactionCategory.incomeCategories.first
+                                                            : TransactionCategory.expenseCategories.first) ?? .food
                                         if t == .income {
                                             selectedPaymentMethod = .cash
+                                            ensureIncomeDestinationSelection()
+                                        } else {
+                                            selectedIncomeBankAccountID = nil
+                                            selectedIncomeSecuritiesAccountID = nil
+                                            ensureAssetAdjustmentSelection()
                                         }
                                     }
                                 } label: {
@@ -230,13 +272,19 @@ struct IncomeExpenseInputView: View {
                                     CategoryChip(
                                         category: cat,
                                         isSelected: selectedCategory == cat
-                                    ) { selectedCategory = cat }
+                                    ) {
+                                        withAnimation(.spring(response: 0.25, dampingFraction: 0.75)) {
+                                            selectedCategory = cat
+                                            ensureIncomeDestinationSelection()
+                                            ensureAssetAdjustmentSelection()
+                                        }
+                                    }
                                 }
                             }
                             .padding(.horizontal, GMSpacing.md)
                         }
 
-                        if transactionType == .expense {
+                        if transactionType == .expense && !isAssetAdjustment {
                             GMInputSection(title: "支払い方法", icon: "wallet.pass.fill") {
                                 VStack(spacing: GMSpacing.sm) {
                                     Picker("支払い方法", selection: $selectedPaymentMethod) {
@@ -286,6 +334,106 @@ struct IncomeExpenseInputView: View {
                             .transition(.opacity.combined(with: .move(edge: .top)))
                         }
 
+                        if isAssetAdjustment {
+                            GMInputSection(title: "対象口座", icon: "chart.line.downtrend.xyaxis") {
+                                VStack(spacing: GMSpacing.sm) {
+                                    Picker("対象口座種別", selection: $selectedAdjustmentTargetKind) {
+                                        Text("証券口座").tag(AssetAccountKind.securities)
+                                        Text("銀行口座").tag(AssetAccountKind.bank)
+                                    }
+                                    .pickerStyle(.segmented)
+                                    .onChange(of: selectedAdjustmentTargetKind) { _, _ in
+                                        ensureAssetAdjustmentSelection()
+                                    }
+
+                                    Divider()
+                                        .background(Color.gmGoldDim.opacity(0.35))
+
+                                    if selectedAdjustmentTargetKind == .securities {
+                                        if dm.securitiesAccounts.isEmpty {
+                                            EmptyTargetAccountRow(text: "登録済み証券口座がありません")
+                                        } else {
+                                            Picker("対象の証券口座", selection: adjustmentSecuritiesSelectionBinding) {
+                                                ForEach(dm.securitiesAccounts) { account in
+                                                    Text("\(account.brokerageName)・\(account.name)")
+                                                        .tag(Optional(account.id))
+                                                }
+                                            }
+                                            .pickerStyle(.menu)
+                                            .tint(Color.gmGold)
+                                            .frame(maxWidth: .infinity, alignment: .leading)
+                                        }
+                                    } else {
+                                        if dm.bankAccounts.isEmpty {
+                                            EmptyTargetAccountRow(text: "登録済み銀行口座がありません")
+                                        } else {
+                                            Picker("対象の銀行口座", selection: adjustmentBankSelectionBinding) {
+                                                ForEach(dm.bankAccounts) { account in
+                                                    Text("\(account.bankName)・\(account.name)")
+                                                        .tag(Optional(account.id))
+                                                }
+                                            }
+                                            .pickerStyle(.menu)
+                                            .tint(Color.gmGold)
+                                            .frame(maxWidth: .infinity, alignment: .leading)
+                                        }
+                                    }
+                                }
+                            }
+                            .padding(.horizontal, GMSpacing.md)
+                            .transition(.opacity.combined(with: .move(edge: .top)))
+                        }
+
+                        if transactionType == .income {
+                            GMInputSection(title: incomeDestinationTitle, icon: incomeDestinationIcon) {
+                                if isInvestmentIncome {
+                                    if dm.securitiesAccounts.isEmpty {
+                                        HStack(spacing: GMSpacing.sm) {
+                                            Image(systemName: "exclamationmark.circle.fill")
+                                                .foregroundStyle(Color.gmGold)
+                                            Text("登録済み証券口座がありません")
+                                                .font(GMFont.caption(12, weight: .medium))
+                                                .foregroundStyle(Color.gmTextTertiary)
+                                            Spacer()
+                                        }
+                                    } else {
+                                        Picker("振込先（証券口座）", selection: incomeSecuritiesSelectionBinding) {
+                                            ForEach(dm.securitiesAccounts) { account in
+                                                Text("\(account.brokerageName)・\(account.name)")
+                                                    .tag(Optional(account.id))
+                                            }
+                                        }
+                                        .pickerStyle(.menu)
+                                        .tint(Color.gmGold)
+                                        .foregroundStyle(Color.gmTextPrimary)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                    }
+                                } else if dm.bankAccounts.isEmpty {
+                                    HStack(spacing: GMSpacing.sm) {
+                                        Image(systemName: "exclamationmark.circle.fill")
+                                            .foregroundStyle(Color.gmGold)
+                                        Text("登録済み口座がありません")
+                                            .font(GMFont.caption(12, weight: .medium))
+                                            .foregroundStyle(Color.gmTextTertiary)
+                                        Spacer()
+                                    }
+                                } else {
+                                    Picker("振込先（銀行口座）", selection: incomeBankSelectionBinding) {
+                                        ForEach(dm.bankAccounts) { account in
+                                            Text("\(account.bankName)・\(account.name)")
+                                                .tag(Optional(account.id))
+                                        }
+                                    }
+                                    .pickerStyle(.menu)
+                                    .tint(Color.gmGold)
+                                    .foregroundStyle(Color.gmTextPrimary)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                }
+                            }
+                            .padding(.horizontal, GMSpacing.md)
+                            .transition(.opacity.combined(with: .move(edge: .top)))
+                        }
+
                         // ── Date Picker ──
                         GMInputSection(title: "日付", icon: "calendar") {
                             Button {
@@ -307,6 +455,7 @@ struct IncomeExpenseInputView: View {
                                 DatePicker("", selection: $selectedDate, displayedComponents: .date)
                                     .datePickerStyle(.graphical)
                                     .tint(Color.gmGold)
+                                    .environment(\.locale, Locale(identifier: "ja_JP"))
                                     .preferredColorScheme(.dark)
                             }
                         }
@@ -344,8 +493,8 @@ struct IncomeExpenseInputView: View {
                             .clipShape(RoundedRectangle(cornerRadius: GMRadius.lg))
                             .shadow(color: Color.gmGold.opacity(0.4), radius: 12, x: 0, y: 4)
                         }
-                        .disabled(parsedAmount <= 0)
-                        .opacity(parsedAmount > 0 ? 1 : 0.45)
+                        .disabled(!canSave)
+                        .opacity(canSave ? 1 : 0.45)
                         .padding(.horizontal, GMSpacing.md)
                         .padding(.bottom, GMSpacing.xl)
                     }
@@ -372,10 +521,25 @@ struct IncomeExpenseInputView: View {
         .presentationBackground(Color.gmBackground)
         .onAppear {
             ensureCreditCardSelection()
+            ensureIncomeDestinationSelection()
+            ensureAssetAdjustmentSelection()
         }
         .onChange(of: dm.creditCards.map(\.id)) { _, _ in
             ensureCreditCardSelection()
         }
+        .onChange(of: dm.bankAccounts.map(\.id)) { _, _ in
+            ensureIncomeDestinationSelection()
+            ensureAssetAdjustmentSelection()
+        }
+        .onChange(of: dm.securitiesAccounts.map(\.id)) { _, _ in
+            ensureIncomeDestinationSelection()
+            ensureAssetAdjustmentSelection()
+        }
+        .onChange(of: selectedCategory) { _, _ in
+            ensureIncomeDestinationSelection()
+            ensureAssetAdjustmentSelection()
+        }
+        .environment(\.locale, Locale(identifier: "ja_JP"))
     }
 
     private var creditCardSelectionBinding: Binding<UUID?> {
@@ -389,10 +553,84 @@ struct IncomeExpenseInputView: View {
         )
     }
 
+    private var incomeBankSelectionBinding: Binding<UUID?> {
+        Binding(
+            get: {
+                selectedIncomeBankAccountID ?? dm.bankAccounts.first?.id
+            },
+            set: { newValue in
+                selectedIncomeBankAccountID = newValue
+            }
+        )
+    }
+
+    private var incomeSecuritiesSelectionBinding: Binding<UUID?> {
+        Binding(
+            get: {
+                selectedIncomeSecuritiesAccountID ?? dm.securitiesAccounts.first?.id
+            },
+            set: { newValue in
+                selectedIncomeSecuritiesAccountID = newValue
+            }
+        )
+    }
+
+    private var adjustmentBankSelectionBinding: Binding<UUID?> {
+        Binding(
+            get: {
+                selectedAdjustmentBankAccountID ?? dm.bankAccounts.first?.id
+            },
+            set: { newValue in
+                selectedAdjustmentBankAccountID = newValue
+            }
+        )
+    }
+
+    private var adjustmentSecuritiesSelectionBinding: Binding<UUID?> {
+        Binding(
+            get: {
+                selectedAdjustmentSecuritiesAccountID ?? dm.securitiesAccounts.first?.id
+            },
+            set: { newValue in
+                selectedAdjustmentSecuritiesAccountID = newValue
+            }
+        )
+    }
+
     private var selectedCreditCard: CreditCard? {
         guard needsCreditCardSelection else { return nil }
         let selectedID = creditCardSelectionBinding.wrappedValue
         return dm.creditCards.first { $0.id == selectedID }
+    }
+
+    private var isInvestmentIncome: Bool {
+        transactionType == .income && selectedCategory == .investment
+    }
+
+    private var incomeDestinationTitle: String {
+        isInvestmentIncome ? "振込先（証券口座）" : "振込先（銀行口座）"
+    }
+
+    private var incomeDestinationIcon: String {
+        isInvestmentIncome ? "chart.line.uptrend.xyaxis" : "building.columns.fill"
+    }
+
+    private var canSave: Bool {
+        guard parsedAmount > 0 else { return false }
+        if transactionType == .income {
+            return isInvestmentIncome
+                ? incomeSecuritiesSelectionBinding.wrappedValue != nil
+                : incomeBankSelectionBinding.wrappedValue != nil
+        }
+        if isAssetAdjustment {
+            return selectedAdjustmentTargetKind == .securities
+                ? adjustmentSecuritiesSelectionBinding.wrappedValue != nil
+                : adjustmentBankSelectionBinding.wrappedValue != nil
+        }
+        if needsCreditCardSelection {
+            return creditCardSelectionBinding.wrappedValue != nil
+        }
+        return true
     }
 
     private func ensureCreditCardSelection() {
@@ -404,17 +642,88 @@ struct IncomeExpenseInputView: View {
         }
     }
 
+    private func ensureAssetAdjustmentSelection() {
+        guard isAssetAdjustment else { return }
+        if selectedAdjustmentTargetKind == .securities {
+            guard let current = selectedAdjustmentSecuritiesAccountID,
+                  dm.securitiesAccounts.contains(where: { $0.id == current }) else {
+                selectedAdjustmentSecuritiesAccountID = dm.securitiesAccounts.first?.id
+                return
+            }
+            return
+        }
+
+        guard let current = selectedAdjustmentBankAccountID,
+              dm.bankAccounts.contains(where: { $0.id == current }) else {
+            selectedAdjustmentBankAccountID = dm.bankAccounts.first?.id
+            return
+        }
+    }
+
+    private func ensureIncomeDestinationSelection() {
+        guard transactionType == .income else { return }
+        if isInvestmentIncome {
+            guard let current = selectedIncomeSecuritiesAccountID,
+                  dm.securitiesAccounts.contains(where: { $0.id == current }) else {
+                selectedIncomeSecuritiesAccountID = dm.securitiesAccounts.first?.id
+                return
+            }
+            return
+        }
+
+        guard let current = selectedIncomeBankAccountID,
+              dm.bankAccounts.contains(where: { $0.id == current }) else {
+            selectedIncomeBankAccountID = dm.bankAccounts.first?.id
+            return
+        }
+    }
+
     private func saveTransaction() {
         let card = selectedCreditCard
+        let bankID: UUID?
+        if transactionType == .income && !isInvestmentIncome {
+            bankID = incomeBankSelectionBinding.wrappedValue
+        } else if isAssetAdjustment && selectedAdjustmentTargetKind == .bank {
+            bankID = adjustmentBankSelectionBinding.wrappedValue
+        } else {
+            bankID = nil
+        }
+        let bankName = bankID.flatMap { id in
+            dm.bankAccounts.first(where: { $0.id == id })?.name
+        }
+        let securitiesID: UUID?
+        if transactionType == .income && isInvestmentIncome {
+            securitiesID = incomeSecuritiesSelectionBinding.wrappedValue
+        } else if isAssetAdjustment && selectedAdjustmentTargetKind == .securities {
+            securitiesID = adjustmentSecuritiesSelectionBinding.wrappedValue
+        } else {
+            securitiesID = nil
+        }
+        let securitiesName = securitiesID.flatMap { id in
+            dm.securitiesAccounts.first(where: { $0.id == id })?.name
+        }
+        let finalMemo: String
+        if isAssetAdjustment && memo.isEmpty {
+            finalMemo = "評価調整"
+        } else {
+            finalMemo = memo
+        }
         let t = Transaction(
             type: transactionType,
             amount: parsedAmount,
             category: selectedCategory,
             date: selectedDate,
-            memo: memo,
+            memo: finalMemo,
             paymentMethod: transactionType == .expense ? selectedPaymentMethod : .cash,
             creditCardID: card?.id,
-            creditCardName: card?.cardName
+            creditCardName: card?.cardName,
+            bankAccountID: bankID,
+            bankAccountName: bankName,
+            securitiesAccountID: securitiesID,
+            securitiesAccountName: securitiesName,
+            incomeDestinationKind: isInvestmentIncome ? .securities : .bank,
+            isAssetAdjustment: isAssetAdjustment,
+            assetAdjustmentTargetKind: isAssetAdjustment ? selectedAdjustmentTargetKind : nil
         )
         // Persist via DataManager
         dm.addTransaction(t)
@@ -489,6 +798,21 @@ struct GMInputSection<Content: View>: View {
                     RoundedRectangle(cornerRadius: GMRadius.md)
                         .strokeBorder(Color.gmGoldDim.opacity(0.3), lineWidth: 0.5)
                 )
+        }
+    }
+}
+
+struct EmptyTargetAccountRow: View {
+    let text: String
+
+    var body: some View {
+        HStack(spacing: GMSpacing.sm) {
+            Image(systemName: "exclamationmark.circle.fill")
+                .foregroundStyle(Color.gmGold)
+            Text(text)
+                .font(GMFont.caption(12, weight: .medium))
+                .foregroundStyle(Color.gmTextTertiary)
+            Spacer()
         }
     }
 }

@@ -9,26 +9,33 @@ struct WealthCalendarView: View {
     @State private var selectedDay: Int?    = nil
     @State private var showDayDetail: Bool  = false
 
-    private let calendar   = Calendar.current
+    private var calendar: Calendar {
+        .gmJapan
+    }
     private let weekLabels = ["日","月","火","水","木","金","土"]
     private let columns    = Array(repeating: GridItem(.flexible(), spacing: 4), count: 7)
 
     // ─── helpers ───
     private var monthTitle: String {
         let f = DateFormatter(); f.locale = Locale(identifier: "ja_JP")
-        f.dateFormat = "yyyy年 M月"; return f.string(from: displayedMonth)
+        f.dateFormat = "yyyy年M月"; return f.string(from: displayedMonth)
     }
-    private var daysInMonth: Int {
-        calendar.range(of: .day, in: .month, for: displayedMonth)?.count ?? 30
+    private var monthStart: Date {
+        let comps = calendar.dateComponents([.year, .month], from: displayedMonth)
+        return calendar.date(from: comps).map { calendar.startOfDay(for: $0) } ?? calendar.startOfDay(for: displayedMonth)
+    }
+    private var monthDays: [Date] {
+        guard let range = calendar.range(of: .day, in: .month, for: monthStart) else { return [] }
+        return range.compactMap { day in
+            calendar.date(byAdding: .day, value: day - 1, to: monthStart)
+        }
     }
     private var firstWeekday: Int {
-        var c = calendar.dateComponents([.year,.month], from: displayedMonth)
-        c.day = 1
-        return (calendar.date(from: c).map { calendar.component(.weekday, from: $0) } ?? 1) - 1
+        calendar.component(.weekday, from: monthStart) - 1
     }
     private var todayDay: Int {
         let tc = calendar.dateComponents([.year,.month,.day], from: Date())
-        let dc = calendar.dateComponents([.year,.month], from: displayedMonth)
+        let dc = calendar.dateComponents([.year,.month], from: monthStart)
         return (tc.year == dc.year && tc.month == dc.month) ? (tc.day ?? -1) : -1
     }
     private func snapshot(for day: Int) -> DayFinancialSnapshot {
@@ -109,7 +116,8 @@ struct WealthCalendarView: View {
             // Day grid
             LazyVGrid(columns: columns, spacing: 5) {
                 ForEach(0..<firstWeekday, id: \.self) { _ in Color.clear.frame(height: 54) }
-                ForEach(1...daysInMonth, id: \.self) { day in
+                ForEach(monthDays, id: \.self) { date in
+                    let day = calendar.component(.day, from: date)
                     WealthCalendarDayCell(
                         day: day,
                         isToday: day == todayDay,
@@ -292,8 +300,7 @@ struct DayDetailPopup: View {
     let snapshot: DayFinancialSnapshot
 
     private var dateStr: String {
-        let f = DateFormatter(); f.locale = Locale(identifier: "ja_JP")
-        f.dateFormat = "M月d日 (E)"; return f.string(from: snapshot.date)
+        snapshot.date.japaneseDateString
     }
 
     var body: some View {
@@ -498,20 +505,22 @@ extension DataManager {
     func daySnapshot(day: Int, month: Date) -> DayFinancialSnapshot {
         var expenses: [ScheduledExpense] = []
         var incomes: [ScheduledIncome] = []
-        let cal = Calendar.current
+        var cal = Calendar(identifier: .gregorian)
+        cal.locale = Locale(identifier: "ja_JP")
         var comps = cal.dateComponents([.year, .month], from: month)
         comps.day = day
         let date = cal.date(from: comps) ?? month
         let dateStart = cal.startOfDay(for: date)
 
         // カード
-        for card in creditCards where card.billingDay == day {
+        for schedule in cardPaymentSchedules where cal.isDate(schedule.paymentDate, inSameDayAs: date) {
+            let card = creditCards.first { $0.id == schedule.cardID }
             expenses.append(ScheduledExpense(
-                name: card.cardName,
-                amount: card.nextBillingAmount,
+                name: schedule.title,
+                amount: schedule.amount,
                 category: .creditCard,
                 icon: "creditcard.fill",
-                color: Color(hex: card.accentColorHex)
+                color: Color(hex: card?.accentColorHex ?? "#D4AF37")
             ))
         }
         // 固定費
@@ -558,7 +567,10 @@ extension DataManager {
 
         // その日までに発生する累積支出を計算
         let cumulativeExpenses = (1...max(day,1)).reduce(0.0) { sum, d in
-            let dCards = creditCards.filter { $0.billingDay == d }.reduce(0) { $0 + $1.nextBillingAmount }
+            let dCards = cardPaymentSchedules.filter { schedule in
+                let scheduleDay = cal.component(.day, from: schedule.paymentDate)
+                return scheduleDay == d && cal.isDate(schedule.paymentDate, equalTo: month, toGranularity: .month)
+            }.reduce(0) { $0 + $1.amount }
             let dFixed = fixedCosts.filter { $0.isActive && $0.billingDay == d }.reduce(0) { $0 + $1.amount }
             let dSub   = subscriptions.filter { $0.isActive && $0.billingDay == d && $0.billingCycle == .monthly }.reduce(0) { $0 + $1.monthlyCost }
             return sum + dCards + dFixed + dSub

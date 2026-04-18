@@ -238,7 +238,18 @@ extension Date {
     var japaneseDateString: String {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "ja_JP")
-        formatter.dateFormat = "yyyy年M月d日（E）"
+        formatter.timeZone = TimeZone(identifier: "Asia/Tokyo")
+        formatter.dateFormat = "yyyy年M月d日(EEE)"
         return formatter.string(from: self)
+    }
+}
+
+extension Calendar {
+    static var gmJapan: Calendar {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.locale = Locale(identifier: "ja_JP")
+        calendar.timeZone = TimeZone(identifier: "Asia/Tokyo") ?? .current
+        calendar.firstWeekday = 1
+        return calendar
     }
 }

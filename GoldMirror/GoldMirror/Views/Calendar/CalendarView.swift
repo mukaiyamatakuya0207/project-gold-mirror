@@ -8,7 +8,9 @@ struct CalendarView: View {
     @State private var displayedMonth: Date = Date()
     @State private var selectedDay: Int? = nil
 
-    private let calendar = Calendar.current
+    private var calendar: Calendar {
+        .gmJapan
+    }
     private let columns = Array(repeating: GridItem(.flexible(), spacing: 4), count: 7)
     private let weekdaySymbols = ["日", "月", "火", "水", "木", "金", "土"]
 
@@ -18,19 +20,25 @@ struct CalendarView: View {
     private var monthTitle: String {
         let fmt = DateFormatter()
         fmt.locale = Locale(identifier: "ja_JP")
-        fmt.dateFormat = "yyyy年 M月"
+        fmt.dateFormat = "yyyy年M月"
         return fmt.string(from: displayedMonth)
     }
 
-    private var daysInMonth: Int {
-        calendar.range(of: .day, in: .month, for: displayedMonth)?.count ?? 30
+    private var monthStart: Date {
+        let comps = calendar.dateComponents([.year, .month], from: displayedMonth)
+        return calendar.date(from: comps).map { calendar.startOfDay(for: $0) } ?? calendar.startOfDay(for: displayedMonth)
+    }
+
+    private var monthDays: [Date] {
+        guard let range = calendar.range(of: .day, in: .month, for: monthStart) else { return [] }
+        return range.compactMap { day in
+            calendar.date(byAdding: .day, value: day - 1, to: monthStart)
+        }
     }
 
     /// 月の最初の日が何曜日か (0=日, 1=月, …)
     private var firstWeekdayOffset: Int {
-        let comps = calendar.dateComponents([.year, .month], from: displayedMonth)
-        guard let firstDay = calendar.date(from: comps) else { return 0 }
-        return calendar.component(.weekday, from: firstDay) - 1
+        calendar.component(.weekday, from: monthStart) - 1
     }
 
     private var billingEvents: [Int: [CreditCard]] {
@@ -39,7 +47,7 @@ struct CalendarView: View {
 
     private var today: Int {
         let comps = calendar.dateComponents([.year, .month, .day], from: Date())
-        let dispComps = calendar.dateComponents([.year, .month], from: displayedMonth)
+        let dispComps = calendar.dateComponents([.year, .month], from: monthStart)
         if comps.year == dispComps.year && comps.month == dispComps.month {
             return comps.day ?? -1
         }
@@ -122,7 +130,8 @@ struct CalendarView: View {
                             }
 
                             // Day cells
-                            ForEach(1...daysInMonth, id: \.self) { day in
+                            ForEach(monthDays, id: \.self) { date in
+                                let day = calendar.component(.day, from: date)
                                 CalendarDayCell(
                                     day: day,
                                     isToday: day == today,

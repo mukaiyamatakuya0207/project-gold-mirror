@@ -553,6 +553,7 @@ struct SubscriptionFormSheet: View {
                             DatePicker("終了日", selection: $endDate, displayedComponents: .date)
                                 .foregroundStyle(Color.gmTextPrimary)
                                 .tint(Color.gmGold)
+                                .environment(\.locale, Locale(identifier: "ja_JP"))
                         }
                     } header: {
                         Text("契約情報").font(GMFont.caption(12)).foregroundStyle(Color.gmGold)

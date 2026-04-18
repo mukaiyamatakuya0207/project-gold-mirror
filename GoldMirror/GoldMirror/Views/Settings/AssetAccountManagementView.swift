@@ -7,6 +7,8 @@ struct AssetAccountManagementView: View {
     @EnvironmentObject var dm: DataManager
     @State private var showBankForm = false
     @State private var showSecuritiesForm = false
+    @State private var showBankTransfer = false
+    @State private var showTransferCompleteAlert = false
     @State private var editingBank: BankAccount?
     @State private var editingSecurities: SecuritiesAccount?
 
@@ -17,6 +19,12 @@ struct AssetAccountManagementView: View {
             ScrollView(showsIndicators: false) {
                 VStack(spacing: GMSpacing.lg) {
                     AssetAccountHeader()
+
+                    BankTransferActionCard(
+                        isEnabled: !dm.bankAccounts.isEmpty && (dm.bankAccounts.count + dm.securitiesAccounts.count) >= 2,
+                        onTap: { showBankTransfer = true }
+                    )
+                    .padding(.horizontal, GMSpacing.md)
 
                     AssetAccountSection(
                         title: "銀行口座",
@@ -68,6 +76,16 @@ struct AssetAccountManagementView: View {
         .sheet(isPresented: $showBankForm) {
             BankAccountFormSheet(account: nil) { dm.addBankAccount($0) }
         }
+        .sheet(isPresented: $showBankTransfer) {
+            BankTransferSheet { sourceKind, sourceID, destinationID, amount in
+                if dm.transferToBankAccount(from: sourceKind, sourceID: sourceID, toBankAccountID: destinationID, amount: amount) {
+                    showTransferCompleteAlert = true
+                    return true
+                }
+                return false
+            }
+            .environmentObject(dm)
+        }
         .sheet(item: $editingBank) { account in
             BankAccountFormSheet(account: account) { dm.updateBankAccount($0) }
         }
@@ -76,6 +94,11 @@ struct AssetAccountManagementView: View {
         }
         .sheet(item: $editingSecurities) { account in
             SecuritiesAccountFormSheet(account: account) { dm.updateSecuritiesAccount($0) }
+        }
+        .alert("振替が完了しました", isPresented: $showTransferCompleteAlert) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("銀行口座の残高を更新しました。")
         }
     }
 
@@ -87,6 +110,46 @@ struct AssetAccountManagementView: View {
     private func deleteSecurities(_ account: SecuritiesAccount) {
         guard let idx = dm.securitiesAccounts.firstIndex(where: { $0.id == account.id }) else { return }
         dm.deleteSecuritiesAccount(at: IndexSet(integer: idx))
+    }
+}
+
+struct BankTransferActionCard: View {
+    let isEnabled: Bool
+    let onTap: () -> Void
+
+    var body: some View {
+        Button(action: onTap) {
+            HStack(spacing: GMSpacing.md) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: GMRadius.sm)
+                        .fill(Color.gmGold.opacity(0.14))
+                        .frame(width: 44, height: 44)
+                    Image(systemName: "arrow.left.arrow.right")
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundStyle(Color.gmGold)
+                }
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("銀行間振替")
+                        .font(GMFont.body(15, weight: .semibold))
+                        .foregroundStyle(Color.gmTextPrimary)
+                    Text(isEnabled ? "銀行・証券口座から銀行口座へ資金を移動" : "銀行口座と振替元口座が必要です")
+                        .font(GMFont.caption(11))
+                        .foregroundStyle(Color.gmTextTertiary)
+                }
+
+                Spacer()
+
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(Color.gmGold)
+            }
+            .padding(GMSpacing.md)
+            .gmCardStyle(elevated: true)
+        }
+        .buttonStyle(.plain)
+        .disabled(!isEnabled)
+        .opacity(isEnabled ? 1 : 0.45)
     }
 }
 
@@ -359,6 +422,196 @@ struct SecuritiesAccountFormSheet: View {
             purchaseAmount: Double(purchaseText) ?? 0
         )
         onSave(account)
+        dismiss()
+    }
+}
+
+struct BankTransferSheet: View {
+    @EnvironmentObject var dm: DataManager
+    @Environment(\.dismiss) private var dismiss
+    let onTransfer: (AssetAccountKind, UUID, UUID, Double) -> Bool
+
+    @State private var sourceKind: AssetAccountKind = .bank
+    @State private var sourceID: UUID?
+    @State private var destinationID: UUID?
+    @State private var amountText = ""
+    @State private var showValidationAlert = false
+
+    private var sourceBalance: Double? {
+        guard let sourceID else { return nil }
+        switch sourceKind {
+        case .bank:
+            return dm.bankAccounts.first { $0.id == sourceID }?.balance
+        case .securities:
+            return dm.securitiesAccounts.first { $0.id == sourceID }?.balance
+        }
+    }
+
+    private var destinationCandidates: [BankAccount] {
+        sourceKind == .bank ? dm.bankAccounts.filter { $0.id != sourceID } : dm.bankAccounts
+    }
+
+    private var amount: Double {
+        Double(amountText.replacingOccurrences(of: ",", with: "")) ?? 0
+    }
+
+    private var canTransfer: Bool {
+        guard let sourceID,
+              let destinationID,
+              amount > 0 else {
+            return false
+        }
+        guard dm.bankAccounts.contains(where: { $0.id == destinationID }) else { return false }
+        switch sourceKind {
+        case .bank:
+            return sourceID != destinationID && dm.bankAccounts.contains { $0.id == sourceID }
+        case .securities:
+            return dm.securitiesAccounts.contains { $0.id == sourceID }
+        }
+    }
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                Color.gmBackground.ignoresSafeArea()
+
+                Form {
+                    Section {
+                        Picker("振替元種別", selection: $sourceKind) {
+                            Text("銀行口座").tag(AssetAccountKind.bank)
+                            Text("証券口座").tag(AssetAccountKind.securities)
+                        }
+                        .pickerStyle(.segmented)
+                        .onChange(of: sourceKind) { _, _ in
+                            sourceID = nil
+                            destinationID = nil
+                            ensureSelections()
+                        }
+
+                        Picker("振替元（出金）口座", selection: sourceBinding) {
+                            if sourceKind == .bank {
+                                ForEach(dm.bankAccounts) { account in
+                                    Text("\(account.bankName)・\(account.name)")
+                                        .tag(Optional(account.id))
+                                }
+                            } else {
+                                ForEach(dm.securitiesAccounts) { account in
+                                    Text("\(account.brokerageName)・\(account.name)")
+                                        .tag(Optional(account.id))
+                                }
+                            }
+                        }
+                        .tint(Color.gmGold)
+
+                        Picker("振替先（入金）口座", selection: destinationBinding) {
+                            ForEach(destinationCandidates) { account in
+                                Text("\(account.bankName)・\(account.name)")
+                                    .tag(Optional(account.id))
+                            }
+                        }
+                        .tint(Color.gmGold)
+
+                        GMFormField(label: "振替金額（円）", placeholder: "0", text: $amountText)
+                            .keyboardType(.numberPad)
+                    } header: {
+                        Text("振替内容")
+                            .font(GMFont.caption(12))
+                            .foregroundStyle(Color.gmGold)
+                    } footer: {
+                        if let sourceBalance {
+                            Text("振替元残高: \(sourceBalance.jpyFormatted)")
+                                .font(GMFont.caption(11))
+                                .foregroundStyle(Color.gmTextTertiary)
+                        }
+                    }
+                }
+                .scrollContentBackground(.hidden)
+                .background(Color.gmBackground)
+            }
+            .navigationTitle("銀行間振替")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("キャンセル") { dismiss() }
+                        .foregroundStyle(Color.gmTextSecondary)
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("振替実行") {
+                        executeTransfer()
+                    }
+                    .foregroundStyle(Color.gmGold)
+                    .fontWeight(.bold)
+                    .disabled(!canTransfer)
+                }
+            }
+            .alert("振替できません", isPresented: $showValidationAlert) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text("振替元・振替先・金額を確認してください。")
+            }
+        }
+        .preferredColorScheme(.dark)
+        .onAppear { ensureSelections() }
+        .onChange(of: dm.bankAccounts.map(\.id)) { _, _ in ensureSelections() }
+        .onChange(of: dm.securitiesAccounts.map(\.id)) { _, _ in ensureSelections() }
+        .onChange(of: sourceID) { _, _ in ensureDestinationSelection() }
+    }
+
+    private var sourceBinding: Binding<UUID?> {
+        Binding(
+            get: {
+                if let sourceID { return sourceID }
+                return sourceKind == .bank ? dm.bankAccounts.first?.id : dm.securitiesAccounts.first?.id
+            },
+            set: { sourceID = $0 }
+        )
+    }
+
+    private var destinationBinding: Binding<UUID?> {
+        Binding(
+            get: { destinationID ?? destinationCandidates.first?.id },
+            set: { destinationID = $0 }
+        )
+    }
+
+    private func ensureSelections() {
+        guard !dm.bankAccounts.isEmpty else {
+            sourceID = nil
+            destinationID = nil
+            return
+        }
+
+        if sourceKind == .securities && dm.securitiesAccounts.isEmpty {
+            sourceKind = .bank
+        }
+
+        if sourceKind == .bank {
+            if sourceID == nil || !dm.bankAccounts.contains(where: { $0.id == sourceID }) {
+                sourceID = dm.bankAccounts.first?.id
+            }
+        } else {
+            if sourceID == nil || !dm.securitiesAccounts.contains(where: { $0.id == sourceID }) {
+                sourceID = dm.securitiesAccounts.first?.id
+            }
+        }
+        ensureDestinationSelection()
+    }
+
+    private func ensureDestinationSelection() {
+        if destinationID == sourceID ||
+            destinationID == nil ||
+            !destinationCandidates.contains(where: { $0.id == destinationID }) {
+            destinationID = destinationCandidates.first?.id
+        }
+    }
+
+    private func executeTransfer() {
+        guard let sourceID,
+              let destinationID,
+              onTransfer(sourceKind, sourceID, destinationID, amount) else {
+            showValidationAlert = true
+            return
+        }
         dismiss()
     }
 }

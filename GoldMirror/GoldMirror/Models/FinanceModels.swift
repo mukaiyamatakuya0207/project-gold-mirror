@@ -117,7 +117,7 @@ struct Subscription: Identifiable, Codable {
     /// 契約終了まで残り日数
     var daysUntilExpiry: Int? {
         guard let end = contractEndDate else { return nil }
-        return Calendar.current.dateComponents([.day], from: Date(), to: end).day
+        return Calendar.gmJapan.dateComponents([.day], from: Date(), to: end).day
     }
 
     init(
@@ -163,4 +163,30 @@ struct NextBillingSummary {
     let nextBillingDate: Date   // 次の引き落とし日
     let totalAmount: Double     // その日の合計引き落とし額
     let cards: [CreditCard]     // 対象カード
+    var schedules: [CardPaymentSchedule] = []
+}
+
+// ─────────────────────────────────────────
+// MARK: Card Payment Schedule
+// ─────────────────────────────────────────
+struct CardPaymentSchedule: Identifiable, Codable {
+    let id: UUID
+    var cardID: UUID
+    var title: String
+    var paymentDate: Date
+    var amount: Double
+
+    init(
+        id: UUID = UUID(),
+        cardID: UUID,
+        title: String,
+        paymentDate: Date,
+        amount: Double
+    ) {
+        self.id = id
+        self.cardID = cardID
+        self.title = title
+        self.paymentDate = paymentDate
+        self.amount = amount
+    }
 }

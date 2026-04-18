@@ -123,7 +123,7 @@ struct DashboardHeaderView: View {
     @Binding var showNotifications: Bool
 
     private var greeting: String {
-        let h = Calendar.current.component(.hour, from: Date())
+        let h = Calendar.gmJapan.component(.hour, from: Date())
         switch h {
         case 5..<12:  return "Good Morning"
         case 12..<17: return "Good Afternoon"
@@ -133,10 +133,7 @@ struct DashboardHeaderView: View {
     }
 
     private var dateStr: String {
-        let f = DateFormatter()
-        f.locale = Locale(identifier: "ja_JP")
-        f.dateFormat = "yyyy年M月d日 (E)"
-        return f.string(from: Date())
+        Date().japaneseDateString
     }
 
     var body: some View {

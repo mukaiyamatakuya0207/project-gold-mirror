@@ -88,7 +88,7 @@ final class NotificationManager: ObservableObject {
 
     private func scheduleBillingNotifications(for card: CreditCard, center: UNUserNotificationCenter) async {
         let billingDay = card.billingDay
-        let calendar = Calendar.current
+        let calendar = Calendar.gmJapan
         var comps = calendar.dateComponents([.year, .month], from: Date())
         comps.day = billingDay
         comps.hour = 9

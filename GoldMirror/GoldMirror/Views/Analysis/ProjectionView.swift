@@ -295,7 +295,7 @@ struct EventTimelineCard: View {
     private let dateFmt: DateFormatter = {
         let f = DateFormatter()
         f.locale = Locale(identifier: "ja_JP")
-        f.dateFormat = "M/d (E)"
+        f.dateFormat = "yyyy年M月d日(EEE)"
         return f
     }()
 
@@ -369,18 +369,22 @@ struct OutflowBreakdownCard: View {
                         color: Color(hex: "#CE93D8"), icon: "play.rectangle.fill"),
             OutflowItem(label: "手入力支出",       amount: dm.currentMonthTransactionExpense,
                         color: .gmNegative, icon: "pencil.and.list.clipboard"),
+            OutflowItem(label: "資産評価調整",     amount: dm.currentMonthAssetAdjustmentLoss,
+                        color: Color(hex: "#B86BFF"), icon: "chart.line.downtrend.xyaxis"),
         ]
         .filter { $0.amount > 0 }
     }
 
-    private var total: Double { dm.totalMonthlyOutflow + dm.currentMonthTransactionExpense }
+    private var total: Double {
+        dm.totalMonthlyOutflow + dm.currentMonthTransactionExpense + dm.currentMonthAssetAdjustmentLoss
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: GMSpacing.md) {
             HStack {
                 Image(systemName: "chart.pie.fill")
                     .foregroundStyle(Color.gmGold)
-                Text("月間支出の内訳")
+                Text("月間支出・資産調整")
                     .font(GMFont.heading(15, weight: .semibold))
                     .foregroundStyle(Color.gmTextPrimary)
                 Spacer()

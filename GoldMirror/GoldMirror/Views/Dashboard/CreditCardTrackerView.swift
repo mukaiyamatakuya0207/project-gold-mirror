@@ -95,13 +95,6 @@ struct CreditCardTrackerView: View {
 struct NextBillingBanner: View {
     let summary: NextBillingSummary
 
-    private var dateFmt: DateFormatter {
-        let f = DateFormatter()
-        f.locale = Locale(identifier: "ja_JP")
-        f.dateFormat = "M月d日 (E)"
-        return f
-    }
-
     var body: some View {
         HStack(spacing: GMSpacing.md) {
             // Countdown circle
@@ -132,7 +125,7 @@ struct NextBillingBanner: View {
                 Text(summary.totalAmount.jpyFormatted)
                     .font(GMFont.display(24, weight: .bold))
                     .foregroundStyle(GMGradient.goldHorizontal)
-                Text(dateFmt.string(from: summary.nextBillingDate))
+                Text(summary.nextBillingDate.japaneseDateString)
                     .font(GMFont.caption(12))
                     .foregroundStyle(Color.gmTextSecondary)
             }
@@ -206,6 +199,8 @@ struct CardBillingSummaryCard: View {
 // ─────────────────────────────────────────
 struct PaymentScheduleSection: View {
     @EnvironmentObject var dm: DataManager
+    @State private var showScheduleForm = false
+    @State private var editingSchedule: CardPaymentSchedule?
 
     var body: some View {
         VStack(alignment: .leading, spacing: GMSpacing.sm) {
@@ -221,6 +216,18 @@ struct PaymentScheduleSection: View {
                         .foregroundStyle(Color.gmTextTertiary)
                 }
                 Spacer()
+                Button {
+                    showScheduleForm = true
+                } label: {
+                    Label("追加", systemImage: "plus")
+                        .font(GMFont.caption(12, weight: .bold))
+                        .foregroundStyle(Color.black)
+                        .padding(.horizontal, GMSpacing.sm)
+                        .padding(.vertical, 7)
+                        .background(GMGradient.goldHorizontal)
+                        .clipShape(Capsule())
+                }
+                .buttonStyle(.plain)
             }
 
             if dm.creditCards.isEmpty {
@@ -231,61 +238,84 @@ struct PaymentScheduleSection: View {
                     .padding(GMSpacing.lg)
                     .background(Color.gmSurface)
                     .clipShape(RoundedRectangle(cornerRadius: GMRadius.md))
+            } else if dm.cardPaymentSchedules.isEmpty {
+                Text("「追加」から引き落とし予定を登録できます")
+                    .font(GMFont.caption(12, weight: .medium))
+                    .foregroundStyle(Color.gmTextTertiary)
+                    .frame(maxWidth: .infinity)
+                    .padding(GMSpacing.lg)
+                    .background(Color.gmSurface)
+                    .clipShape(RoundedRectangle(cornerRadius: GMRadius.md))
             } else {
-                ForEach(dm.creditCards) { card in
-                    PaymentScheduleRow(card: card)
+                ForEach(dm.cardPaymentSchedules.sorted { $0.paymentDate < $1.paymentDate }) { schedule in
+                    PaymentScheduleRow(schedule: schedule) {
+                        editingSchedule = schedule
+                    } onDelete: {
+                        dm.deleteCardPaymentSchedule(schedule)
+                    }
                 }
             }
+        }
+        .sheet(isPresented: $showScheduleForm) {
+            CardPaymentScheduleFormSheet(schedule: nil) { dm.addCardPaymentSchedule($0) }
+                .environmentObject(dm)
+        }
+        .sheet(item: $editingSchedule) { schedule in
+            CardPaymentScheduleFormSheet(schedule: schedule) { dm.updateCardPaymentSchedule($0) }
+                .environmentObject(dm)
         }
     }
 }
 
 struct PaymentScheduleRow: View {
     @EnvironmentObject var dm: DataManager
-    let card: CreditCard
-    @State private var paymentDate: Date
-    @State private var amountText: String
+    let schedule: CardPaymentSchedule
+    let onEdit: () -> Void
+    let onDelete: () -> Void
 
-    init(card: CreditCard) {
-        self.card = card
-        _paymentDate = State(initialValue: card.nextPaymentDate)
-        _amountText = State(initialValue: card.nextPaymentAmount > 0 ? "\(Int(card.nextPaymentAmount))" : "")
+    private var cardName: String {
+        dm.creditCards.first { $0.id == schedule.cardID }?.cardName ?? "未設定カード"
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: GMSpacing.sm) {
-            HStack {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(card.cardName)
-                        .font(GMFont.body(14, weight: .semibold))
-                        .foregroundStyle(Color.gmTextPrimary)
-                    Text("現在: \(card.nextPaymentDate.japaneseDateString) / \(card.nextPaymentAmount.jpyFormatted)")
-                        .font(GMFont.caption(10))
-                        .foregroundStyle(Color.gmTextTertiary)
-                }
-                Spacer()
-                Button("更新") { save() }
-                    .font(GMFont.caption(12, weight: .bold))
+        HStack(spacing: GMSpacing.md) {
+            ZStack {
+                RoundedRectangle(cornerRadius: GMRadius.sm)
+                    .fill(Color.gmGold.opacity(0.14))
+                    .frame(width: 44, height: 44)
+                Image(systemName: "calendar.badge.clock")
+                    .font(.system(size: 17, weight: .semibold))
                     .foregroundStyle(Color.gmGold)
             }
 
-            DatePicker("次回引き落とし予定日", selection: $paymentDate, displayedComponents: .date)
-                .datePickerStyle(.compact)
-                .tint(Color.gmGold)
-                .foregroundStyle(Color.gmTextPrimary)
-
-            HStack {
-                Text("次回引き落とし予定金額")
-                    .font(GMFont.caption(12, weight: .medium))
-                    .foregroundStyle(Color.gmTextSecondary)
-                Spacer()
-                TextField("0", text: $amountText)
-                    .keyboardType(.numberPad)
-                    .multilineTextAlignment(.trailing)
-                    .font(GMFont.mono(15, weight: .bold))
+            VStack(alignment: .leading, spacing: 3) {
+                Text(schedule.title)
+                    .font(GMFont.body(14, weight: .semibold))
                     .foregroundStyle(Color.gmTextPrimary)
-                    .tint(Color.gmGold)
-                    .frame(maxWidth: 130)
+                Text("\(cardName) / \(schedule.paymentDate.japaneseDateString)")
+                    .font(GMFont.caption(11))
+                    .foregroundStyle(Color.gmTextTertiary)
+                    .lineLimit(1)
+            }
+
+            Spacer()
+
+            VStack(alignment: .trailing, spacing: 6) {
+                Text(schedule.amount.jpyFormatted)
+                    .font(GMFont.mono(14, weight: .bold))
+                    .foregroundStyle(Color.gmTextPrimary)
+                HStack(spacing: 10) {
+                    Button(action: onEdit) {
+                        Image(systemName: "pencil")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(Color.gmGold)
+                    }
+                    Button(action: onDelete) {
+                        Image(systemName: "trash")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(Color.gmNegative)
+                    }
+                }
             }
         }
         .padding(GMSpacing.md)
@@ -295,20 +325,97 @@ struct PaymentScheduleRow: View {
             RoundedRectangle(cornerRadius: GMRadius.md)
                 .strokeBorder(Color.gmGoldDim.opacity(0.25), lineWidth: 0.6)
         )
-        .onChange(of: card.nextPaymentDate) { _, newValue in
-            paymentDate = newValue
+    }
+}
+
+struct CardPaymentScheduleFormSheet: View {
+    let schedule: CardPaymentSchedule?
+    let onSave: (CardPaymentSchedule) -> Void
+    @EnvironmentObject var dm: DataManager
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var selectedCardID: UUID?
+    @State private var title = ""
+    @State private var paymentDate = Date()
+    @State private var amountText = ""
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                Color.gmBackground.ignoresSafeArea()
+
+                Form {
+                    Section {
+                        Picker("カード", selection: cardSelectionBinding) {
+                            ForEach(dm.creditCards) { card in
+                                Text(card.cardName).tag(Optional(card.id))
+                            }
+                        }
+                        .tint(Color.gmGold)
+
+                        GMFormField(label: "引き落とし項目名", placeholder: "Amex 4月分", text: $title)
+
+                        DatePicker("次回引き落とし予定日", selection: $paymentDate, displayedComponents: .date)
+                            .tint(Color.gmGold)
+                            .environment(\.locale, Locale(identifier: "ja_JP"))
+
+                        GMFormField(label: "次回引き落とし予定金額", placeholder: "0", text: $amountText)
+                            .keyboardType(.numberPad)
+                    } header: {
+                        Text("スケジュール").font(GMFont.caption(12)).foregroundStyle(Color.gmGold)
+                    }
+                }
+                .scrollContentBackground(.hidden)
+                .background(Color.gmBackground)
+            }
+            .navigationTitle(schedule == nil ? "予定を追加" : "予定を編集")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("キャンセル") { dismiss() }
+                        .foregroundStyle(Color.gmTextSecondary)
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("保存") { save() }
+                        .foregroundStyle(Color.gmGold)
+                        .fontWeight(.bold)
+                        .disabled(title.isEmpty || dm.creditCards.isEmpty)
+                }
+            }
+            .preferredColorScheme(.dark)
         }
-        .onChange(of: card.nextPaymentAmount) { _, newValue in
-            amountText = newValue > 0 ? "\(Int(newValue))" : ""
+        .onAppear { populate() }
+    }
+
+    private var cardSelectionBinding: Binding<UUID?> {
+        Binding(
+            get: { selectedCardID ?? dm.creditCards.first?.id },
+            set: { selectedCardID = $0 }
+        )
+    }
+
+    private func populate() {
+        guard let schedule else {
+            selectedCardID = dm.creditCards.first?.id
+            return
         }
+        selectedCardID = schedule.cardID
+        title = schedule.title
+        paymentDate = schedule.paymentDate
+        amountText = schedule.amount > 0 ? "\(Int(schedule.amount))" : ""
     }
 
     private func save() {
-        dm.updateCreditCardSchedule(
-            cardID: card.id,
-            nextPaymentDate: paymentDate,
-            nextPaymentAmount: Double(amountText.replacingOccurrences(of: ",", with: "")) ?? 0
+        guard let cardID = cardSelectionBinding.wrappedValue else { return }
+        let updated = CardPaymentSchedule(
+            id: schedule?.id ?? UUID(),
+            cardID: cardID,
+            title: title,
+            paymentDate: paymentDate,
+            amount: Double(amountText.replacingOccurrences(of: ",", with: "")) ?? 0
         )
+        onSave(updated)
+        dismiss()
     }
 }
 
@@ -419,9 +526,14 @@ struct BillingDayHeatmap: View {
     private let columns = Array(repeating: GridItem(.flexible(), spacing: 4), count: 7)
 
     private func amountForDay(_ day: Int) -> Double {
-        let cards = dm.creditCards.filter { $0.billingDay == day }
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.locale = Locale(identifier: "ja_JP")
+        let schedules = dm.cardPaymentSchedules.filter {
+            calendar.component(.day, from: $0.paymentDate) == day &&
+            calendar.isDate($0.paymentDate, equalTo: Date(), toGranularity: .month)
+        }
         let costs = dm.fixedCosts.filter { $0.isActive && $0.billingDay == day }
-        return cards.reduce(0) { $0 + dm.currentMonthBillingAmount(for: $1) }
+        return schedules.reduce(0) { $0 + $1.amount }
              + costs.reduce(0) { $0 + $1.amount }
     }
 
@@ -581,7 +693,7 @@ struct CreditCardFormSheet: View {
     }
 
     private func save() {
-        let defaultPaymentDate = Calendar.current.date(byAdding: .day, value: 1, to: Date()) ?? Date()
+        let defaultPaymentDate = Calendar.gmJapan.date(byAdding: .day, value: 1, to: Date()) ?? Date()
         let paymentDate = card?.nextPaymentDate ?? defaultPaymentDate
         let paymentAmount = card?.nextPaymentAmount ?? 0
         let updated = CreditCard(

@@ -7,6 +7,7 @@ import Combine
 
 @MainActor
 final class DataManager: ObservableObject {
+    private static var jpCalendar: Calendar { .gmJapan }
 
     // ─────────────────────────────────────────
     // MARK: Published State
@@ -18,6 +19,7 @@ final class DataManager: ObservableObject {
     @Published var bankAccounts: [BankAccount]             = MockData.bankAccounts
     @Published var securitiesAccounts: [SecuritiesAccount] = MockData.securitiesAccounts
     @Published var creditCards: [CreditCard]               = MockData.creditCards
+    @Published var cardPaymentSchedules: [CardPaymentSchedule] = []
 
     // ─────────────────────────────────────────
     // MARK: Computed – Totals
@@ -65,7 +67,7 @@ final class DataManager: ObservableObject {
     }
 
     var totalMonthlyCardBilling: Double {
-        creditCards.reduce(0) { $0 + $1.nextPaymentAmount }
+        cardPaymentSchedules(in: Date()).reduce(0) { $0 + $1.amount }
     }
 
     /// 月間固定支出合計（固定費 + サブスク + カード）
@@ -81,6 +83,10 @@ final class DataManager: ObservableObject {
         transactionTotals(in: Date()).expense
     }
 
+    var currentMonthAssetAdjustmentLoss: Double {
+        assetAdjustmentTotal(in: Date())
+    }
+
     /// 年間サブスク合計
     var totalAnnualSubscriptions: Double {
         subscriptions.filter { $0.isActive }.reduce(0) { $0 + $1.annualCost }
@@ -92,27 +98,31 @@ final class DataManager: ObservableObject {
 
     /// 最も近い次の引き落とし情報を返す
     var nextBillingSummary: NextBillingSummary? {
-        let calendar = Calendar.current
+        let calendar = Self.jpCalendar
         let todayStart = calendar.startOfDay(for: Date())
-        let upcomingCards = creditCards.filter {
-            calendar.startOfDay(for: $0.nextPaymentDate) > todayStart && $0.nextPaymentAmount > 0
+        let upcomingSchedules = cardPaymentSchedules.filter {
+            calendar.startOfDay(for: $0.paymentDate) > todayStart && $0.amount > 0
         }
 
-        guard let nearestDate = upcomingCards.map({ calendar.startOfDay(for: $0.nextPaymentDate) }).min() else {
+        guard let nearestDate = upcomingSchedules.map({ calendar.startOfDay(for: $0.paymentDate) }).min() else {
             return nil
         }
 
-        let cardsOnDay = upcomingCards.filter {
-            calendar.isDate($0.nextPaymentDate, inSameDayAs: nearestDate)
+        let schedulesOnDay = upcomingSchedules.filter {
+            calendar.isDate($0.paymentDate, inSameDayAs: nearestDate)
         }
-        let total = cardsOnDay.reduce(0) { $0 + $1.nextPaymentAmount }
+        let total = schedulesOnDay.reduce(0) { $0 + $1.amount }
         let daysUntil = calendar.dateComponents([.day], from: todayStart, to: nearestDate).day ?? 0
+        let cardsOnDay = schedulesOnDay.compactMap { schedule in
+            creditCards.first { $0.id == schedule.cardID }
+        }
 
         return NextBillingSummary(
             daysUntil: daysUntil,
             nextBillingDate: nearestDate,
             totalAmount: total,
-            cards: cardsOnDay
+            cards: cardsOnDay,
+            schedules: schedulesOnDay
         )
     }
 
@@ -128,7 +138,7 @@ final class DataManager: ObservableObject {
         monthlyIncome: Double = 0,
         securitiesGrowthRate: Double = 0.005
     ) -> [ProjectionPoint] {
-        let calendar = Calendar.current
+        let calendar = Self.jpCalendar
         let today = Date()
         let todayStart = calendar.startOfDay(for: today)
         var points: [ProjectionPoint] = []
@@ -177,11 +187,11 @@ final class DataManager: ObservableObject {
             }
 
             // カード引き落とし日
-            for card in creditCards {
-                if calendar.isDate(card.nextPaymentDate, inSameDayAs: date) {
-                    cashBalance -= card.nextPaymentAmount
+            for schedule in cardPaymentSchedules {
+                if calendar.isDate(schedule.paymentDate, inSameDayAs: date) {
+                    cashBalance -= schedule.amount
                     isEvent = true
-                    eventLabels.append(card.cardName)
+                    eventLabels.append(schedule.title)
                 }
             }
 
@@ -236,6 +246,43 @@ final class DataManager: ObservableObject {
                   removedIDs.contains(linkedID) else { continue }
             creditCards[idx].linkedBankAccountID = nil
         }
+    }
+
+    func transferBetweenBankAccounts(from sourceID: UUID, to destinationID: UUID, amount: Double) -> Bool {
+        guard amount > 0,
+              sourceID != destinationID,
+              let sourceIndex = bankAccounts.firstIndex(where: { $0.id == sourceID }),
+              let destinationIndex = bankAccounts.firstIndex(where: { $0.id == destinationID }) else {
+            return false
+        }
+
+        bankAccounts[sourceIndex].balance -= amount
+        bankAccounts[destinationIndex].balance += amount
+        return true
+    }
+
+    func transferToBankAccount(from sourceKind: AssetAccountKind, sourceID: UUID, toBankAccountID destinationID: UUID, amount: Double) -> Bool {
+        guard amount > 0,
+              let destinationIndex = bankAccounts.firstIndex(where: { $0.id == destinationID }) else {
+            return false
+        }
+
+        switch sourceKind {
+        case .bank:
+            guard sourceID != destinationID,
+                  let sourceIndex = bankAccounts.firstIndex(where: { $0.id == sourceID }) else {
+                return false
+            }
+            bankAccounts[sourceIndex].balance -= amount
+        case .securities:
+            guard let sourceIndex = securitiesAccounts.firstIndex(where: { $0.id == sourceID }) else {
+                return false
+            }
+            securitiesAccounts[sourceIndex].balance -= amount
+        }
+
+        bankAccounts[destinationIndex].balance += amount
+        return true
     }
 
     func addSecuritiesAccount(_ account: SecuritiesAccount) {
@@ -303,30 +350,69 @@ final class DataManager: ObservableObject {
     // ─────────────────────────────────────────
     func addCreditCard(_ card: CreditCard) {
         var card = card
-        card.nextBillingAmount = card.nextPaymentAmount
-        card.currentUsage = card.nextPaymentAmount
+        card.nextBillingAmount = currentMonthBillingAmount(for: card)
+        card.currentUsage = card.nextBillingAmount
         creditCards.append(card)
     }
 
     func updateCreditCard(_ card: CreditCard) {
         if let idx = creditCards.firstIndex(where: { $0.id == card.id }) {
             var card = card
-            card.nextBillingAmount = card.nextPaymentAmount
-            card.currentUsage = card.nextPaymentAmount
+            card.nextBillingAmount = currentMonthBillingAmount(for: card)
+            card.currentUsage = card.nextBillingAmount
             creditCards[idx] = card
         }
     }
 
     func updateCreditCardSchedule(cardID: UUID, nextPaymentDate: Date, nextPaymentAmount: Double) {
-        guard let idx = creditCards.firstIndex(where: { $0.id == cardID }) else { return }
-        creditCards[idx].nextPaymentDate = nextPaymentDate
-        creditCards[idx].nextPaymentAmount = nextPaymentAmount
-        creditCards[idx].nextBillingAmount = nextPaymentAmount
-        creditCards[idx].currentUsage = nextPaymentAmount
+        let fallbackTitle = creditCards.first(where: { $0.id == cardID })?.cardName ?? "カード引き落とし"
+        if let existing = cardPaymentSchedules.first(where: { $0.cardID == cardID }) {
+            updateCardPaymentSchedule(
+                CardPaymentSchedule(
+                    id: existing.id,
+                    cardID: cardID,
+                    title: existing.title,
+                    paymentDate: nextPaymentDate,
+                    amount: nextPaymentAmount
+                )
+            )
+        } else {
+            addCardPaymentSchedule(
+                CardPaymentSchedule(
+                    cardID: cardID,
+                    title: fallbackTitle,
+                    paymentDate: nextPaymentDate,
+                    amount: nextPaymentAmount
+                )
+            )
+        }
     }
 
     func deleteCreditCard(at offsets: IndexSet) {
+        let removedIDs = offsets.map { creditCards[$0].id }
         creditCards.remove(atOffsets: offsets)
+        cardPaymentSchedules.removeAll { removedIDs.contains($0.cardID) }
+    }
+
+    // ─────────────────────────────────────────
+    // MARK: CRUD – Card Payment Schedules
+    // ─────────────────────────────────────────
+    func addCardPaymentSchedule(_ schedule: CardPaymentSchedule) {
+        cardPaymentSchedules.append(schedule)
+        syncCardBillingAmount(for: schedule.cardID)
+    }
+
+    func updateCardPaymentSchedule(_ schedule: CardPaymentSchedule) {
+        guard let idx = cardPaymentSchedules.firstIndex(where: { $0.id == schedule.id }) else { return }
+        let previousCardID = cardPaymentSchedules[idx].cardID
+        cardPaymentSchedules[idx] = schedule
+        syncCardBillingAmount(for: previousCardID)
+        syncCardBillingAmount(for: schedule.cardID)
+    }
+
+    func deleteCardPaymentSchedule(_ schedule: CardPaymentSchedule) {
+        cardPaymentSchedules.removeAll { $0.id == schedule.id }
+        syncCardBillingAmount(for: schedule.cardID)
     }
 
     // ─────────────────────────────────────────
@@ -336,17 +422,18 @@ final class DataManager: ObservableObject {
 
     func addTransaction(_ t: Transaction) {
         transactions.insert(t, at: 0)
-        applyTransactionToBankBalance(t)
+        applyTransactionToAccountBalance(t)
     }
 
     func transactions(on date: Date) -> [Transaction] {
-        transactions.filter { Calendar.current.isDate($0.date, inSameDayAs: date) }
+        transactions.filter { Self.jpCalendar.isDate($0.date, inSameDayAs: date) }
     }
 
     func transactionTotals(in month: Date) -> (income: Double, expense: Double) {
-        let calendar = Calendar.current
+        let calendar = Self.jpCalendar
         return transactions.reduce(into: (income: 0.0, expense: 0.0)) { totals, transaction in
             guard calendar.isDate(transaction.date, equalTo: month, toGranularity: .month) else { return }
+            guard !transaction.isAssetAdjustment else { return }
             switch transaction.type {
             case .income:
                 totals.income += transaction.amount
@@ -356,14 +443,32 @@ final class DataManager: ObservableObject {
         }
     }
 
+    func assetAdjustmentTotal(in month: Date) -> Double {
+        let calendar = Self.jpCalendar
+        return transactions.reduce(0) { total, transaction in
+            guard transaction.isAssetAdjustment,
+                  calendar.isDate(transaction.date, equalTo: month, toGranularity: .month) else {
+                return total
+            }
+            return total + transaction.amount
+        }
+    }
+
     func transactionDelta(after date: Date) -> Double {
-        transactions
-            .filter { Calendar.current.startOfDay(for: $0.date) > date }
+        let calendar = Self.jpCalendar
+        return transactions
+            .filter { calendar.startOfDay(for: $0.date) > date }
             .reduce(0) { $0 + $1.delta }
     }
 
     func currentMonthBillingAmount(for card: CreditCard) -> Double {
-        card.nextPaymentAmount
+        cardPaymentSchedules(in: Date(), cardID: card.id).reduce(0) { $0 + $1.amount }
+    }
+
+    func cardPaymentSchedules(for card: CreditCard) -> [CardPaymentSchedule] {
+        cardPaymentSchedules
+            .filter { $0.cardID == card.id }
+            .sorted { $0.paymentDate < $1.paymentDate }
     }
 
     func linkedBankName(for card: CreditCard) -> String {
@@ -374,13 +479,36 @@ final class DataManager: ObservableObject {
         return account.name
     }
 
-    private func applyTransactionToBankBalance(_ transaction: Transaction) {
-        guard !bankAccounts.isEmpty else { return }
-
+    private func applyTransactionToAccountBalance(_ transaction: Transaction) {
         switch transaction.type {
         case .income:
-            bankAccounts[0].balance += transaction.amount
+            if transaction.incomeDestinationKind == .securities {
+                let targetID = transaction.securitiesAccountID ?? securitiesAccounts.first?.id
+                guard let idx = securitiesAccounts.firstIndex(where: { $0.id == targetID }) else { return }
+                securitiesAccounts[idx].balance += transaction.amount
+                return
+            }
+
+            let targetID = transaction.bankAccountID ?? bankAccounts.first?.id
+            guard let idx = bankAccounts.firstIndex(where: { $0.id == targetID }) else { return }
+            bankAccounts[idx].balance += transaction.amount
         case .expense:
+            if transaction.isAssetAdjustment {
+                switch transaction.assetAdjustmentTargetKind {
+                case .securities:
+                    let targetID = transaction.securitiesAccountID ?? securitiesAccounts.first?.id
+                    guard let idx = securitiesAccounts.firstIndex(where: { $0.id == targetID }) else { return }
+                    securitiesAccounts[idx].balance -= transaction.amount
+                case .bank:
+                    let targetID = transaction.bankAccountID ?? bankAccounts.first?.id
+                    guard let idx = bankAccounts.firstIndex(where: { $0.id == targetID }) else { return }
+                    bankAccounts[idx].balance -= transaction.amount
+                case .none:
+                    return
+                }
+                return
+            }
+
             if transaction.paymentMethod == .creditCard {
                 return
             }
@@ -394,6 +522,30 @@ final class DataManager: ObservableObject {
         }
     }
 
+    private func cardPaymentSchedules(in month: Date, cardID: UUID? = nil) -> [CardPaymentSchedule] {
+        let calendar = Self.jpCalendar
+        return cardPaymentSchedules.filter { schedule in
+            let matchesMonth = calendar.isDate(schedule.paymentDate, equalTo: month, toGranularity: .month)
+            let matchesCard = cardID.map { $0 == schedule.cardID } ?? true
+            return matchesMonth && matchesCard
+        }
+    }
+
+    private func syncCardBillingAmount(for cardID: UUID) {
+        guard let idx = creditCards.firstIndex(where: { $0.id == cardID }) else { return }
+        let amount = currentMonthBillingAmount(for: creditCards[idx])
+        creditCards[idx].nextBillingAmount = amount
+        creditCards[idx].currentUsage = amount
+        if let next = cardPaymentSchedules(for: creditCards[idx]).first(where: {
+            Self.jpCalendar.startOfDay(for: $0.paymentDate) >= Self.jpCalendar.startOfDay(for: Date())
+        }) {
+            creditCards[idx].nextPaymentDate = next.paymentDate
+            creditCards[idx].nextPaymentAmount = next.amount
+        } else {
+            creditCards[idx].nextPaymentAmount = amount
+        }
+    }
+
     private func projectedRecurringIncome(fallbackMonthlyIncome: Double) -> (day: Int, amount: Double, label: String) {
         let salaryTransactions = transactions
             .filter { $0.type == .income && ($0.category == .salary || $0.category == .bonus) }
@@ -403,12 +555,12 @@ final class DataManager: ObservableObject {
             return (1, fallbackMonthlyIncome, "給与入金")
         }
 
-        let day = Calendar.current.component(.day, from: latestSalary.date)
+        let day = Self.jpCalendar.component(.day, from: latestSalary.date)
         return (min(max(day, 1), 28), latestSalary.amount, latestSalary.category.rawValue)
     }
 
     private func averageDailyVariableTransactionDelta() -> Double {
-        let calendar = Calendar.current
+        let calendar = Self.jpCalendar
         let today = calendar.startOfDay(for: Date())
         guard let start = calendar.date(byAdding: .day, value: -90, to: today) else { return 0 }
 
@@ -428,7 +580,7 @@ final class DataManager: ObservableObject {
     // MARK: Helpers
     // ─────────────────────────────────────────
     private func dateForDay(_ day: Int, inMonthOf date: Date) -> Date? {
-        let calendar = Calendar.current
+        let calendar = Self.jpCalendar
         var comps = calendar.dateComponents([.year, .month], from: date)
         comps.day = day
         return calendar.date(from: comps)
@@ -447,6 +599,7 @@ final class DataManager: ObservableObject {
 
 extension Transaction {
     var delta: Double {
-        type == .income ? amount : -amount
+        if isAssetAdjustment { return 0 }
+        return type == .income ? amount : -amount
     }
 }

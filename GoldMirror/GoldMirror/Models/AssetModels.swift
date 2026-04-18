@@ -42,6 +42,12 @@ struct SecuritiesAccount: Identifiable, Codable {
     var purchaseAmount: Double   // 取得額（円）
     var iconName: String         // SF Symbol name
 
+    /// 残高相当。画面表示や資産合計では評価額を残高として扱う。
+    var balance: Double {
+        get { evaluationAmount }
+        set { evaluationAmount = newValue }
+    }
+
     /// 損益（評価額 - 取得額）
     var profitLoss: Double {
         evaluationAmount - purchaseAmount

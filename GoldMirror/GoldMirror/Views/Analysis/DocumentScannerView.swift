@@ -352,7 +352,7 @@ struct ScanHistoryCard: View {
     private var confirmed: [OCRScanResult] { history.filter { $0.isConfirmed }.reversed() }
     private let dateFmt: DateFormatter = {
         let f = DateFormatter(); f.locale = Locale(identifier: "ja_JP")
-        f.dateFormat = "yyyy/MM/dd HH:mm"; return f
+        f.dateFormat = "yyyy年M月d日(EEE) HH:mm"; return f
     }()
     var body: some View {
         VStack(alignment: .leading, spacing: GMSpacing.sm) {

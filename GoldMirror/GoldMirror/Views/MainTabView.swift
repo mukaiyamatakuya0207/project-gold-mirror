@@ -55,6 +55,16 @@ enum GMTab: Int, CaseIterable {
         case .settings:  return "gearshape.fill"
         }
     }
+
+    var japaneseTitle: String {
+        switch self {
+        case .dashboard: return "ダッシュボード"
+        case .calendar:  return "カレンダー"
+        case .mirror:    return "ミラー"
+        case .analysis:  return "分析"
+        case .settings:  return "設定"
+        }
+    }
 }
 
 // ─────────────────────────────────────────
@@ -73,6 +83,7 @@ struct MainTabView: View {
     @StateObject private var viewModel  = AssetViewModel()
     @EnvironmentObject var dataManager:  DataManager
     @EnvironmentObject var ocrViewModel: OCRViewModel
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     @State private var selectedTab: Int = 0
     @State private var showIncome       = false
@@ -88,73 +99,15 @@ struct MainTabView: View {
 
     var body: some View {
         GeometryReader { proxy in
-            ZStack(alignment: .bottomTrailing) {
-                // VStack: content fills available space, bar is pinned at bottom
-                VStack(spacing: 0) {
-
-                    // ── Tab content ──────────────────────────────────────────
-                    TabView(selection: $selectedTab) {
-
-                        NavigationStack {
-                            DashboardView()
-                                .environmentObject(viewModel)
-                                .environmentObject(dataManager)
-                        }
-                        .tag(0)
-
-                        NavigationStack {
-                            WealthCalendarView()
-                                .environmentObject(dataManager)
-                        }
-                        .tag(1)
-
-                        NavigationStack {
-                            MirrorView()
-                                .environmentObject(viewModel)
-                                .environmentObject(ocrViewModel)
-                        }
-                        .tag(2)
-
-                        NavigationStack {
-                            AnalysisView()
-                                .environmentObject(viewModel)
-                                .environmentObject(dataManager)
-                                .environmentObject(ocrViewModel)
-                        }
-                        .tag(3)
-
-                        NavigationStack {
-                            SettingsView()
-                                .environmentObject(dataManager)
-                                .environmentObject(viewModel)
-                        }
-                        .tag(4)
-                    }
-                    // Keep iOS state restoration; hides page dots
-                    .tabViewStyle(.automatic)
-                    // TabView takes all remaining space above the bar
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-
-                    // ── Custom Tab Bar (always at bottom) ────────────────────
-                    GMCustomTabBar(
-                        selectedTab: $selectedTab,
-                        bottomSafeArea: proxy.safeAreaInsets.bottom
-                    )
-                }
-                .ignoresSafeArea(.container, edges: .bottom)
-
-                if shouldShowIncomeButton {
-                    incomeFloatingButton
-                        .padding(.trailing, GMSpacing.lg)
-                        .padding(.bottom, GMTabBarConstants.barHeight
-                                 + proxy.safeAreaInsets.bottom
-                                 + GMTabBarConstants.floatingActionBottomPadding)
-                        .transition(.scale.combined(with: .opacity))
-                }
+            if horizontalSizeClass == .regular {
+                iPadSplitLayout(proxy: proxy)
+            } else {
+                iPhoneTabLayout(proxy: proxy)
             }
         }
         // Background fills entire screen including safe areas
         .background(Color.gmBackground.ignoresSafeArea())
+        .environment(\.locale, Locale(identifier: "ja_JP"))
         .environmentObject(viewModel)
         .sheet(isPresented: $showIncome) {
             IncomeExpenseInputView()
@@ -162,25 +115,198 @@ struct MainTabView: View {
         }
     }
 
+    private func iPhoneTabLayout(proxy: GeometryProxy) -> some View {
+        ZStack(alignment: .bottomTrailing) {
+            // VStack: content fills available space, bar is pinned at bottom
+            VStack(spacing: 0) {
+
+                // ── Tab content ──────────────────────────────────────────
+                TabView(selection: $selectedTab) {
+
+                    NavigationStack { tabContent(.dashboard) }
+                        .tag(GMTab.dashboard.rawValue)
+
+                    NavigationStack { tabContent(.calendar) }
+                        .tag(GMTab.calendar.rawValue)
+
+                    NavigationStack { tabContent(.mirror) }
+                        .tag(GMTab.mirror.rawValue)
+
+                    NavigationStack { tabContent(.analysis) }
+                        .tag(GMTab.analysis.rawValue)
+
+                    NavigationStack { tabContent(.settings) }
+                        .tag(GMTab.settings.rawValue)
+                }
+                // Keep iOS state restoration; hides page dots
+                .tabViewStyle(.automatic)
+                // TabView takes all remaining space above the bar
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+                // ── Custom Tab Bar (always at bottom) ────────────────────
+                GMCustomTabBar(
+                    selectedTab: $selectedTab,
+                    bottomSafeArea: proxy.safeAreaInsets.bottom
+                )
+            }
+            .ignoresSafeArea(.container, edges: .bottom)
+
+            if shouldShowIncomeButton {
+                incomeFloatingButton
+                    .padding(.trailing, GMSpacing.lg)
+                    .padding(.bottom, GMTabBarConstants.barHeight
+                             + proxy.safeAreaInsets.bottom
+                             + GMTabBarConstants.floatingActionBottomPadding)
+                    .transition(.scale.combined(with: .opacity))
+            }
+        }
+    }
+
+    private func iPadSplitLayout(proxy: GeometryProxy) -> some View {
+        ZStack(alignment: .bottomTrailing) {
+            NavigationSplitView {
+                GMIPadSidebar(selectedTab: $selectedTab)
+                    .navigationSplitViewColumnWidth(min: 230, ideal: 260, max: 300)
+            } detail: {
+                NavigationStack {
+                    tabContent(GMTab(rawValue: selectedTab) ?? .dashboard)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
+            }
+            .navigationSplitViewStyle(.balanced)
+            .tint(Color.gmGold)
+            .background(Color.gmBackground.ignoresSafeArea())
+
+            if shouldShowIncomeButton {
+                incomeFloatingButton
+                    .padding(.trailing, GMSpacing.xl)
+                    .padding(.bottom, proxy.safeAreaInsets.bottom + GMSpacing.xl)
+                    .transition(.scale.combined(with: .opacity))
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func tabContent(_ tab: GMTab) -> some View {
+        switch tab {
+        case .dashboard:
+            DashboardView()
+                .environmentObject(viewModel)
+                .environmentObject(dataManager)
+        case .calendar:
+            WealthCalendarView()
+                .environmentObject(dataManager)
+        case .mirror:
+            MirrorView()
+                .environmentObject(viewModel)
+                .environmentObject(ocrViewModel)
+        case .analysis:
+            AnalysisView()
+                .environmentObject(viewModel)
+                .environmentObject(dataManager)
+                .environmentObject(ocrViewModel)
+        case .settings:
+            SettingsView()
+                .environmentObject(dataManager)
+                .environmentObject(viewModel)
+        }
+    }
+
     private var incomeFloatingButton: some View {
         Button { showIncome = true } label: {
-            ZStack {
+            ZStack(alignment: .center) {
                 Circle()
                     .fill(GMGradient.goldDiagonal)
-                    .frame(width: GMTabBarConstants.fabDiameter,
-                           height: GMTabBarConstants.fabDiameter)
                     .gmGoldGlow(radius: 16, opacity: 0.5)
 
                 Image(systemName: "plus")
-                    .font(.system(size: 22, weight: .bold))
+                    .font(.system(size: 24, weight: .semibold))
                     .foregroundStyle(Color.black)
+                    .frame(width: GMTabBarConstants.fabDiameter,
+                           height: GMTabBarConstants.fabDiameter,
+                           alignment: .center)
             }
+            .frame(width: GMTabBarConstants.fabDiameter,
+                   height: GMTabBarConstants.fabDiameter,
+                   alignment: .center)
         }
         .frame(width: GMTabBarConstants.fabDiameter,
-               height: GMTabBarConstants.fabDiameter)
+               height: GMTabBarConstants.fabDiameter,
+               alignment: .center)
         .contentShape(Circle())
         .buttonStyle(.plain)
         .zIndex(2)
+    }
+}
+
+// ─────────────────────────────────────────
+// MARK: iPad Sidebar
+// ─────────────────────────────────────────
+struct GMIPadSidebar: View {
+    @Binding var selectedTab: Int
+
+    var body: some View {
+        ZStack {
+            Color.gmBackground.ignoresSafeArea()
+
+            VStack(alignment: .leading, spacing: GMSpacing.lg) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Gold Mirror")
+                        .font(GMFont.display(26, weight: .bold))
+                        .foregroundStyle(GMGradient.goldHorizontal)
+                    Text("資産管理メニュー")
+                        .font(GMFont.caption(12, weight: .semibold))
+                        .foregroundStyle(Color.gmTextTertiary)
+                        .tracking(1)
+                }
+                .padding(.horizontal, GMSpacing.md)
+                .padding(.top, GMSpacing.lg)
+
+                VStack(spacing: GMSpacing.sm) {
+                    ForEach(GMTab.allCases, id: \.rawValue) { tab in
+                        sidebarButton(tab)
+                    }
+                }
+
+                Spacer()
+            }
+            .padding(.vertical, GMSpacing.md)
+        }
+        .scrollContentBackground(.hidden)
+    }
+
+    private func sidebarButton(_ tab: GMTab) -> some View {
+        let selected = selectedTab == tab.rawValue
+        return Button {
+            withAnimation(.spring(response: 0.28, dampingFraction: 0.72)) {
+                selectedTab = tab.rawValue
+            }
+        } label: {
+            HStack(spacing: GMSpacing.sm) {
+                Image(systemName: tab.icon)
+                    .font(.system(size: 16, weight: .semibold))
+                    .frame(width: 30, height: 30)
+                    .foregroundStyle(selected ? Color.black : Color.gmGold)
+                    .background(selected ? Color.gmGold : Color.gmGold.opacity(0.12))
+                    .clipShape(RoundedRectangle(cornerRadius: GMRadius.sm))
+
+                Text(tab.japaneseTitle)
+                    .font(GMFont.body(15, weight: selected ? .bold : .medium))
+                    .foregroundStyle(selected ? Color.gmTextPrimary : Color.gmTextSecondary)
+
+                Spacer()
+            }
+            .padding(.horizontal, GMSpacing.md)
+            .padding(.vertical, 10)
+            .background(selected ? Color.gmSurfaceElevated : Color.clear)
+            .clipShape(RoundedRectangle(cornerRadius: GMRadius.md))
+            .overlay(
+                RoundedRectangle(cornerRadius: GMRadius.md)
+                    .strokeBorder(selected ? Color.gmGold.opacity(0.35) : Color.clear, lineWidth: 0.8)
+            )
+            .padding(.horizontal, GMSpacing.sm)
+        }
+        .buttonStyle(.plain)
     }
 }
 
