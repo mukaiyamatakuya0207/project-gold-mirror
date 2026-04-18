@@ -1,6 +1,28 @@
 // MARK: - MainTabView.swift
 // Gold Mirror – Root tab container.
-// Standard TabView with 5 real tabs + floating central FAB above tab bar.
+//
+// Layout contract
+// ┌─────────────────────────────────┐  ← status bar (handled by each view)
+// │  Tab content (scrollable)       │
+// │  DashboardView / CalendarView / │
+// │  MirrorView / AnalysisView /    │
+// │  SettingsView                   │
+// │                                 │
+// │                                 │
+// ├─────────────────────────────────┤  ← custom tab bar top edge
+// │  [Dash] [Cal]  [+]  [Mir] [Ana] │  ← 60 pt bar
+// └─────────────────────────────────┘  ← home indicator / screen bottom
+//
+// Key design decisions:
+//  • Standard TabView with .tabViewStyle(.automatic) keeps iOS state restoration.
+//  • UITabBar.appearance().isHidden = true hides the system bar globally.
+//  • Custom GMCustomTabBar is attached with .safeAreaInset(edge: .bottom) so
+//    each tab's scroll content automatically stops above the bar – no manual
+//    bottom padding needed.
+//  • The floating + FAB sits inside GMCustomTabBar, lifted with a negative
+//    offset so it peeks above the bar top edge.
+//  • NO .ignoresSafeArea on the outer container → content always starts from
+//    the top safe-area, not from the physical screen edge.
 
 import SwiftUI
 
@@ -39,20 +61,12 @@ enum GMTab: Int, CaseIterable {
 // MARK: Layout Constants
 // ─────────────────────────────────────────
 enum GMTabBarConstants {
-    static let barContentHeight: CGFloat = 60   // icon + label row height
-    static let fabDiameter:      CGFloat = 62   // gold + circle diameter
-    static let fabLift:          CGFloat = 16   // how far FAB rises above bar top edge
-
-    static var safeAreaBottom: CGFloat {
-        UIApplication.shared.connectedScenes
-            .compactMap { $0 as? UIWindowScene }
-            .first?.windows.first?.safeAreaInsets.bottom ?? 0
-    }
-
-    /// Total vertical space reserved at the bottom (bar + home indicator)
-    static var totalHeight: CGFloat {
-        barContentHeight + safeAreaBottom
-    }
+    /// Visible icon+label row height
+    static let barContentHeight: CGFloat = 60
+    /// Gold circle diameter
+    static let fabDiameter: CGFloat = 62
+    /// How many points the FAB rises above the bar's top edge
+    static let fabLift: CGFloat = 14
 }
 
 // ─────────────────────────────────────────
@@ -66,64 +80,62 @@ struct MainTabView: View {
     @State private var selectedTab: Int  = 0
     @State private var showIncomeSheet   = false
 
+    // Hide the native iOS tab bar once, before any view renders.
+    init() {
+        UITabBar.appearance().isHidden = true
+    }
+
     var body: some View {
-        ZStack(alignment: .bottom) {
+        // ── Standard TabView ──────────────────────────────────────────────
+        // .safeAreaInset pushes each tab's content UP so it never hides
+        // behind our custom bar. The bar itself lives in the system safe area.
+        TabView(selection: $selectedTab) {
 
-            // ── TabView: 5 real tabs ──────────────────────────────────────
-            TabView(selection: $selectedTab) {
-
-                NavigationStack {
-                    DashboardView()
-                        .environmentObject(viewModel)
-                        .environmentObject(dataManager)
-                }
-                .tag(0)
-
-                NavigationStack {
-                    WealthCalendarView()
-                        .environmentObject(dataManager)
-                }
-                .tag(1)
-
-                NavigationStack {
-                    MirrorView()
-                        .environmentObject(viewModel)
-                        .environmentObject(ocrViewModel)
-                }
-                .tag(2)
-
-                NavigationStack {
-                    AnalysisView()
-                        .environmentObject(viewModel)
-                        .environmentObject(dataManager)
-                        .environmentObject(ocrViewModel)
-                }
-                .tag(3)
-
-                NavigationStack {
-                    SettingsView()
-                        .environmentObject(dataManager)
-                        .environmentObject(viewModel)
-                }
-                .tag(4)
+            NavigationStack {
+                DashboardView()
+                    .environmentObject(viewModel)
+                    .environmentObject(dataManager)
             }
-            // Use default tab style but hide the native tab bar
-            .tabViewStyle(.automatic)
-            // Hide the built-in iOS tab bar – we draw our own GMCustomTabBar
-            .toolbar(.hidden, for: .tabBar)
-            // Reserve space so scroll content is never hidden by our custom tab bar
-            .safeAreaInset(edge: .bottom, spacing: 0) {
-                Color.clear.frame(height: GMTabBarConstants.totalHeight)
-            }
+            .tag(0)
 
-            // ── Custom Tab Bar ────────────────────────────────────────────
+            NavigationStack {
+                WealthCalendarView()
+                    .environmentObject(dataManager)
+            }
+            .tag(1)
+
+            NavigationStack {
+                MirrorView()
+                    .environmentObject(viewModel)
+                    .environmentObject(ocrViewModel)
+            }
+            .tag(2)
+
+            NavigationStack {
+                AnalysisView()
+                    .environmentObject(viewModel)
+                    .environmentObject(dataManager)
+                    .environmentObject(ocrViewModel)
+            }
+            .tag(3)
+
+            NavigationStack {
+                SettingsView()
+                    .environmentObject(dataManager)
+                    .environmentObject(viewModel)
+            }
+            .tag(4)
+        }
+        // Attach the custom tab bar as a bottom safe-area inset.
+        // SwiftUI automatically adjusts scroll content to stop above it.
+        .safeAreaInset(edge: .bottom, spacing: 0) {
             GMCustomTabBar(
                 selectedTab: $selectedTab,
                 onFABTap: { showIncomeSheet = true }
             )
         }
         .environmentObject(viewModel)
-        .ignoresSafeArea(edges: .bottom)
+        // Income / expense entry sheet
         .sheet(isPresented: $showIncomeSheet) {
             IncomeExpenseInputView()
                 .environmentObject(dataManager)
@@ -140,60 +152,61 @@ struct GMCustomTabBar: View {
 
     @Namespace private var pill
 
-    // Left side: Dashboard (0), Calendar (1)
-    private let leftTabs:  [(Int, String, String)] = [
+    // Left pair: Dashboard · Calendar
+    private let leftTabs: [(Int, String, String)] = [
         (0, "square.grid.2x2.fill", "Dashboard"),
         (1, "calendar",             "Calendar")
     ]
-    // Right side: Analysis (3), Settings (4)
+    // Right pair: Analysis · Settings
     private let rightTabs: [(Int, String, String)] = [
-        (3, "chart.bar.xaxis",  "Analysis"),
-        (4, "gearshape.fill",   "Settings")
+        (3, "chart.bar.xaxis", "Analysis"),
+        (4, "gearshape.fill",  "Settings")
     ]
-    // Centre real tab: Mirror (2)
-    // The FAB floats ABOVE this tab item; it is NOT a tab replacement.
+    // Centre real tab: Mirror (tag 2) – the FAB floats above it.
 
     var body: some View {
         VStack(spacing: 0) {
 
-            // ── Gold hairline separator ──
+            // ── Gold hairline at top of bar ─────────────────────────────
             LinearGradient(
-                colors: [Color.gmGoldDim.opacity(0.5), Color.gmGold, Color.gmGoldDim.opacity(0.5)],
+                colors: [Color.gmGoldDim.opacity(0.4), Color.gmGold, Color.gmGoldDim.opacity(0.4)],
                 startPoint: .leading, endPoint: .trailing
             )
             .frame(height: 0.5)
 
-            // ── Bar body ──────────────────────────────────────────────────
+            // ── Bar body + FAB overlay ───────────────────────────────────
             ZStack(alignment: .top) {
 
-                // Solid opaque background – covers both bar content + home indicator
+                // Fully opaque background (covers bar row + home indicator gap)
                 Color.gmTabBackground
-                    .frame(height: GMTabBarConstants.barContentHeight
-                           + GMTabBarConstants.safeAreaBottom)
+                    .ignoresSafeArea(edges: .bottom)
 
-                // Tab items: left + centre (Mirror) + right
+                // Tab icon / label row
                 HStack(alignment: .center, spacing: 0) {
-
+                    // Left tabs
                     ForEach(leftTabs, id: \.0) { tabItem($0, $1, $2) }
 
-                    // Centre: Mirror tab – sits underneath the FAB overlay
+                    // Centre: Mirror tab (behind the FAB visually)
                     tabItem(2, "person.2.fill", "Mirror")
 
+                    // Right tabs
                     ForEach(rightTabs, id: \.0) { tabItem($0, $1, $2) }
                 }
                 .frame(height: GMTabBarConstants.barContentHeight)
-                .padding(.top, 6)
+                .padding(.top, 4)
 
-                // ── FAB: floats above the center of the bar ───────────────
+                // FAB – horizontally centred, vertically lifted above bar top
                 fabButton
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-                    .offset(y: -(GMTabBarConstants.fabDiameter / 2 + GMTabBarConstants.fabLift))
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .offset(y: -(GMTabBarConstants.fabDiameter / 2
+                                 + GMTabBarConstants.fabLift))
             }
         }
-        .shadow(color: Color.black.opacity(0.75), radius: 14, x: 0, y: -5)
+        // Upward shadow only
+        .shadow(color: Color.black.opacity(0.8), radius: 12, x: 0, y: -3)
     }
 
-    // ── Single tab item ──────────────────────────────────────────────────
+    // ── Single tab item ─────────────────────────────────────────────────
     @ViewBuilder
     private func tabItem(_ tag: Int, _ icon: String, _ label: String) -> some View {
         let sel = selectedTab == tag
@@ -206,7 +219,7 @@ struct GMCustomTabBar: View {
                 ZStack {
                     if sel {
                         Capsule()
-                            .fill(Color.gmGold.opacity(0.16))
+                            .fill(Color.gmGold.opacity(0.15))
                             .frame(width: 44, height: 26)
                             .matchedGeometryEffect(id: "pill", in: pill)
                     }
@@ -227,17 +240,17 @@ struct GMCustomTabBar: View {
         .buttonStyle(.plain)
     }
 
-    // ── Floating Action Button (+ income / expense entry) ────────────────
+    // ── Floating Action Button ──────────────────────────────────────────
     private var fabButton: some View {
         Button(action: onFABTap) {
             ZStack {
-                // Outer halo ring to visually lift FAB above bar
+                // Dark halo separates FAB from bar background
                 Circle()
                     .fill(Color.gmTabBackground)
-                    .frame(width: GMTabBarConstants.fabDiameter + 10,
-                           height: GMTabBarConstants.fabDiameter + 10)
+                    .frame(width: GMTabBarConstants.fabDiameter + 8,
+                           height: GMTabBarConstants.fabDiameter + 8)
 
-                // Gold gradient circle
+                // Gold gradient fill
                 Circle()
                     .fill(LinearGradient(
                         colors: [Color.gmGoldLight, Color.gmGold, Color.gmGoldDim],
@@ -246,7 +259,7 @@ struct GMCustomTabBar: View {
                     ))
                     .frame(width: GMTabBarConstants.fabDiameter,
                            height: GMTabBarConstants.fabDiameter)
-                    .shadow(color: Color.gmGold.opacity(0.6), radius: 12, x: 0, y: 4)
+                    .shadow(color: Color.gmGold.opacity(0.55), radius: 10, x: 0, y: 3)
 
                 // Plus icon
                 Image(systemName: "plus")

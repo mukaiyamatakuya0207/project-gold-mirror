@@ -204,7 +204,7 @@ struct SettingsView: View {
                     }
                     .padding(.vertical, GMSpacing.lg)
 
-                    Spacer().frame(height: 120)
+                    Spacer().frame(height: 50)  // FAB overhang clearance only; safeAreaInset handles tab bar
                 }
             }
         }
