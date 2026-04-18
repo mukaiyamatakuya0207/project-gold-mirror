@@ -63,6 +63,7 @@ struct WealthCalendarView: View {
                 .padding(.top, GMSpacing.md)
             }
         }
+        .navigationBarHidden(true)
         .toolbar(.hidden, for: .navigationBar)
         .toolbarBackground(.hidden, for: .navigationBar)
     }

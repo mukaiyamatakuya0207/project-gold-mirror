@@ -84,6 +84,7 @@ struct MirrorView: View {
                 }
             }
         }
+        .navigationBarHidden(true)
         .toolbar(.hidden, for: .navigationBar)
         .toolbarBackground(.hidden, for: .navigationBar)
         .sheet(isPresented: $showCompose) {

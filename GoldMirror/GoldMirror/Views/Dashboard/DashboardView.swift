@@ -114,6 +114,7 @@ struct DashboardView: View {
             }
         }
         // ── Hide system navigation bar + its reserved space ──
+        .navigationBarHidden(true)
         .toolbar(.hidden, for: .navigationBar)
         .toolbarBackground(.hidden, for: .navigationBar)
         // ── Sub-screen navigation ──
