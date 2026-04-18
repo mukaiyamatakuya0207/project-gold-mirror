@@ -77,6 +77,26 @@ enum TransactionCategory: String, CaseIterable {
     }
 }
 
+enum PaymentMethod: String, CaseIterable {
+    case cash = "現金"
+    case creditCard = "クレジットカード"
+    case electronicMoney = "電子マネー"
+    case qrCode = "QRコード"
+    case bankDebit = "銀行引き落とし"
+    case other = "その他"
+
+    var icon: String {
+        switch self {
+        case .cash:            return "banknote.fill"
+        case .creditCard:      return "creditcard.fill"
+        case .electronicMoney: return "iphone.gen3"
+        case .qrCode:          return "qrcode"
+        case .bankDebit:       return "building.columns.fill"
+        case .other:           return "ellipsis.circle.fill"
+        }
+    }
+}
+
 struct Transaction: Identifiable {
     let id = UUID()
     var type: TransactionType
@@ -84,6 +104,9 @@ struct Transaction: Identifiable {
     var category: TransactionCategory
     var date: Date
     var memo: String
+    var paymentMethod: PaymentMethod = .cash
+    var creditCardID: UUID? = nil
+    var creditCardName: String? = nil
 }
 
 // ─────────────────────────────────────────
@@ -100,12 +123,18 @@ struct IncomeExpenseInputView: View {
     @State private var memo = ""
     @State private var showDatePicker = false
     @State private var savedAnimation = false
+    @State private var selectedPaymentMethod: PaymentMethod = .cash
+    @State private var selectedCreditCardID: UUID?
 
     private var categories: [TransactionCategory] {
         transactionType == .income ? TransactionCategory.incomeCategories : TransactionCategory.expenseCategories
     }
 
     private var parsedAmount: Double { Double(amountText.replacingOccurrences(of: ",", with: "")) ?? 0 }
+
+    private var needsCreditCardSelection: Bool {
+        transactionType == .expense && selectedPaymentMethod == .creditCard
+    }
 
     private var formattedAmount: String {
         guard parsedAmount > 0 else { return "" }
@@ -130,6 +159,9 @@ struct IncomeExpenseInputView: View {
                                         transactionType = t
                                         // reset category to first of that type
                                         selectedCategory = categories.first ?? .food
+                                        if t == .income {
+                                            selectedPaymentMethod = .cash
+                                        }
                                     }
                                 } label: {
                                     HStack(spacing: GMSpacing.xs) {
@@ -204,13 +236,63 @@ struct IncomeExpenseInputView: View {
                             .padding(.horizontal, GMSpacing.md)
                         }
 
+                        if transactionType == .expense {
+                            GMInputSection(title: "支払い方法", icon: "wallet.pass.fill") {
+                                VStack(spacing: GMSpacing.sm) {
+                                    Picker("支払い方法", selection: $selectedPaymentMethod) {
+                                        ForEach(PaymentMethod.allCases, id: \.rawValue) { method in
+                                            Label(method.rawValue, systemImage: method.icon)
+                                                .tag(method)
+                                        }
+                                    }
+                                    .pickerStyle(.menu)
+                                    .tint(Color.gmGold)
+                                    .foregroundStyle(Color.gmTextPrimary)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .onChange(of: selectedPaymentMethod) { _, method in
+                                        guard method == .creditCard else { return }
+                                        ensureCreditCardSelection()
+                                    }
+
+                                    if needsCreditCardSelection {
+                                        Divider()
+                                            .background(Color.gmGoldDim.opacity(0.35))
+
+                                        if dm.creditCards.isEmpty {
+                                            HStack(spacing: GMSpacing.sm) {
+                                                Image(systemName: "exclamationmark.circle.fill")
+                                                    .foregroundStyle(Color.gmGold)
+                                                Text("登録済みカードがありません")
+                                                    .font(GMFont.caption(12, weight: .medium))
+                                                    .foregroundStyle(Color.gmTextTertiary)
+                                                Spacer()
+                                            }
+                                        } else {
+                                            Picker("利用カード", selection: creditCardSelectionBinding) {
+                                                ForEach(dm.creditCards) { card in
+                                                    Text(card.cardName)
+                                                        .tag(Optional(card.id))
+                                                }
+                                            }
+                                            .pickerStyle(.menu)
+                                            .tint(Color.gmGold)
+                                            .foregroundStyle(Color.gmTextPrimary)
+                                            .frame(maxWidth: .infinity, alignment: .leading)
+                                        }
+                                    }
+                                }
+                            }
+                            .padding(.horizontal, GMSpacing.md)
+                            .transition(.opacity.combined(with: .move(edge: .top)))
+                        }
+
                         // ── Date Picker ──
                         GMInputSection(title: "日付", icon: "calendar") {
                             Button {
                                 withAnimation { showDatePicker.toggle() }
                             } label: {
                                 HStack {
-                                    Text(selectedDate.formatted(date: .long, time: .omitted))
+                                    Text(selectedDate.japaneseDateString)
                                         .font(GMFont.body(15))
                                         .foregroundStyle(Color.gmTextPrimary)
                                     Spacer()
@@ -288,15 +370,51 @@ struct IncomeExpenseInputView: View {
         .presentationDetents([.medium, .large])
         .presentationDragIndicator(.visible)
         .presentationBackground(Color.gmBackground)
+        .onAppear {
+            ensureCreditCardSelection()
+        }
+        .onChange(of: dm.creditCards.map(\.id)) { _, _ in
+            ensureCreditCardSelection()
+        }
+    }
+
+    private var creditCardSelectionBinding: Binding<UUID?> {
+        Binding(
+            get: {
+                selectedCreditCardID ?? dm.creditCards.first?.id
+            },
+            set: { newValue in
+                selectedCreditCardID = newValue
+            }
+        )
+    }
+
+    private var selectedCreditCard: CreditCard? {
+        guard needsCreditCardSelection else { return nil }
+        let selectedID = creditCardSelectionBinding.wrappedValue
+        return dm.creditCards.first { $0.id == selectedID }
+    }
+
+    private func ensureCreditCardSelection() {
+        guard needsCreditCardSelection else { return }
+        guard let current = selectedCreditCardID,
+              dm.creditCards.contains(where: { $0.id == current }) else {
+            selectedCreditCardID = dm.creditCards.first?.id
+            return
+        }
     }
 
     private func saveTransaction() {
+        let card = selectedCreditCard
         let t = Transaction(
             type: transactionType,
             amount: parsedAmount,
             category: selectedCategory,
             date: selectedDate,
-            memo: memo
+            memo: memo,
+            paymentMethod: transactionType == .expense ? selectedPaymentMethod : .cash,
+            creditCardID: card?.id,
+            creditCardName: card?.cardName
         )
         // Persist via DataManager
         dm.addTransaction(t)

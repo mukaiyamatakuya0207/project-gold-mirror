@@ -115,6 +115,18 @@ struct SettingsView: View {
                     // ── Asset Management ──
                     SettingsSection(title: "資産管理", icon: "slider.horizontal.3") {
                         SettingsLinkRow(
+                            icon: "building.columns.fill",
+                            iconColor: .gmGold,
+                            title: "銀行口座・証券口座",
+                            subtitle: "残高・評価額を登録、編集、削除"
+                        ) {
+                            AssetAccountManagementView()
+                                .environmentObject(dm)
+                        }
+
+                        GMSettingsDivider()
+
+                        SettingsLinkRow(
                             icon: "creditcard.fill",
                             iconColor: .gmGold,
                             title: "カード管理",
@@ -130,7 +142,7 @@ struct SettingsView: View {
                         SettingsLinkRow(
                             icon: "play.rectangle.fill",
                             iconColor: Color(hex: "#CE93D8"),
-                            title: "固定費管理",
+                            title: "サブスク・固定費",
                             subtitle: "サブスク・毎月の支出を整理"
                         ) {
                             FixedCostManagerView()
@@ -506,6 +518,7 @@ struct SettingsLinkRow<Destination: View>: View {
                     .font(.system(size: 12))
                     .foregroundStyle(Color.gmTextTertiary)
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.vertical, GMSpacing.xs)
             .contentShape(Rectangle())
         }

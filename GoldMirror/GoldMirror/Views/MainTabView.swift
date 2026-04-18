@@ -77,6 +77,10 @@ struct MainTabView: View {
     @State private var selectedTab: Int = 0
     @State private var showIncome       = false
 
+    private var shouldShowIncomeButton: Bool {
+        selectedTab == GMTab.dashboard.rawValue || selectedTab == GMTab.calendar.rawValue
+    }
+
     init() {
         // Hide the system-provided tab bar globally
         UITabBar.appearance().isHidden = true
@@ -139,7 +143,7 @@ struct MainTabView: View {
                 }
                 .ignoresSafeArea(.container, edges: .bottom)
 
-                if selectedTab != GMTab.mirror.rawValue {
+                if shouldShowIncomeButton {
                     incomeFloatingButton
                         .padding(.trailing, GMSpacing.lg)
                         .padding(.bottom, GMTabBarConstants.barHeight

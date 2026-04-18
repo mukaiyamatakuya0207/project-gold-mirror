@@ -79,11 +79,14 @@ struct CreditCard: Identifiable, Codable {
     var issuerName: String            // 発行会社 e.g. "楽天カード株式会社"
     var billingDay: Int               // 引き落とし日（1〜31）
     var nextBillingAmount: Double     // 次回引き落とし予定金額（円）
+    var nextPaymentDate: Date         // 次回引き落とし予定日
+    var nextPaymentAmount: Double     // 次回引き落とし予定金額（円）
     var creditLimit: Double           // 利用限度額（円）
     var currentUsage: Double          // 当月利用済み金額（円）
     var cardLastFour: String          // カード番号末尾4桁
     var iconName: String              // SF Symbol name
     var accentColorHex: String        // カードのアクセントカラー (Hex)
+    var linkedBankAccountID: UUID?    // 引き落とし銀行口座
 
     /// 利用率 (%)
     var usageRate: Double {
@@ -97,22 +100,28 @@ struct CreditCard: Identifiable, Codable {
         issuerName: String,
         billingDay: Int,
         nextBillingAmount: Double,
+        nextPaymentDate: Date = Date(),
+        nextPaymentAmount: Double? = nil,
         creditLimit: Double = 0,
         currentUsage: Double = 0,
         cardLastFour: String = "****",
         iconName: String = "creditcard.fill",
-        accentColorHex: String = "#D4AF37"
+        accentColorHex: String = "#D4AF37",
+        linkedBankAccountID: UUID? = nil
     ) {
         self.id = id
         self.cardName = cardName
         self.issuerName = issuerName
         self.billingDay = billingDay
-        self.nextBillingAmount = nextBillingAmount
+        self.nextBillingAmount = nextPaymentAmount ?? nextBillingAmount
+        self.nextPaymentDate = nextPaymentDate
+        self.nextPaymentAmount = nextPaymentAmount ?? nextBillingAmount
         self.creditLimit = creditLimit
         self.currentUsage = currentUsage
         self.cardLastFour = cardLastFour
         self.iconName = iconName
         self.accentColorHex = accentColorHex
+        self.linkedBankAccountID = linkedBankAccountID
     }
 }
 

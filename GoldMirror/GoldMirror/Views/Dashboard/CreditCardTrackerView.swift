@@ -60,6 +60,9 @@ struct CreditCardTrackerView: View {
                         }
                     }
 
+                    PaymentScheduleSection()
+                        .padding(.horizontal, GMSpacing.md)
+
                     // ── Billing Calendar Preview ──
                     BillingDayHeatmap()
                         .padding(.horizontal, GMSpacing.md)
@@ -75,11 +78,13 @@ struct CreditCardTrackerView: View {
             CreditCardFormSheet(card: nil) { newCard in
                 dm.addCreditCard(newCard)
             }
+            .environmentObject(dm)
         }
         .sheet(item: $editingCard) { card in
             CreditCardFormSheet(card: card) { updated in
                 dm.updateCreditCard(updated)
             }
+            .environmentObject(dm)
         }
     }
 }
@@ -197,11 +202,127 @@ struct CardBillingSummaryCard: View {
 }
 
 // ─────────────────────────────────────────
+// MARK: Payment Schedule Section
+// ─────────────────────────────────────────
+struct PaymentScheduleSection: View {
+    @EnvironmentObject var dm: DataManager
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: GMSpacing.sm) {
+            HStack {
+                Image(systemName: "calendar.badge.clock")
+                    .foregroundStyle(Color.gmGold)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("引き落としスケジュール")
+                        .font(GMFont.heading(15, weight: .semibold))
+                        .foregroundStyle(Color.gmTextPrimary)
+                    Text("カードごとに次回予定日と金額を管理")
+                        .font(GMFont.caption(11))
+                        .foregroundStyle(Color.gmTextTertiary)
+                }
+                Spacer()
+            }
+
+            if dm.creditCards.isEmpty {
+                Text("カードを登録するとスケジュールを設定できます")
+                    .font(GMFont.caption(12, weight: .medium))
+                    .foregroundStyle(Color.gmTextTertiary)
+                    .frame(maxWidth: .infinity)
+                    .padding(GMSpacing.lg)
+                    .background(Color.gmSurface)
+                    .clipShape(RoundedRectangle(cornerRadius: GMRadius.md))
+            } else {
+                ForEach(dm.creditCards) { card in
+                    PaymentScheduleRow(card: card)
+                }
+            }
+        }
+    }
+}
+
+struct PaymentScheduleRow: View {
+    @EnvironmentObject var dm: DataManager
+    let card: CreditCard
+    @State private var paymentDate: Date
+    @State private var amountText: String
+
+    init(card: CreditCard) {
+        self.card = card
+        _paymentDate = State(initialValue: card.nextPaymentDate)
+        _amountText = State(initialValue: card.nextPaymentAmount > 0 ? "\(Int(card.nextPaymentAmount))" : "")
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: GMSpacing.sm) {
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(card.cardName)
+                        .font(GMFont.body(14, weight: .semibold))
+                        .foregroundStyle(Color.gmTextPrimary)
+                    Text("現在: \(card.nextPaymentDate.japaneseDateString) / \(card.nextPaymentAmount.jpyFormatted)")
+                        .font(GMFont.caption(10))
+                        .foregroundStyle(Color.gmTextTertiary)
+                }
+                Spacer()
+                Button("更新") { save() }
+                    .font(GMFont.caption(12, weight: .bold))
+                    .foregroundStyle(Color.gmGold)
+            }
+
+            DatePicker("次回引き落とし予定日", selection: $paymentDate, displayedComponents: .date)
+                .datePickerStyle(.compact)
+                .tint(Color.gmGold)
+                .foregroundStyle(Color.gmTextPrimary)
+
+            HStack {
+                Text("次回引き落とし予定金額")
+                    .font(GMFont.caption(12, weight: .medium))
+                    .foregroundStyle(Color.gmTextSecondary)
+                Spacer()
+                TextField("0", text: $amountText)
+                    .keyboardType(.numberPad)
+                    .multilineTextAlignment(.trailing)
+                    .font(GMFont.mono(15, weight: .bold))
+                    .foregroundStyle(Color.gmTextPrimary)
+                    .tint(Color.gmGold)
+                    .frame(maxWidth: 130)
+            }
+        }
+        .padding(GMSpacing.md)
+        .background(Color.gmSurface)
+        .clipShape(RoundedRectangle(cornerRadius: GMRadius.md))
+        .overlay(
+            RoundedRectangle(cornerRadius: GMRadius.md)
+                .strokeBorder(Color.gmGoldDim.opacity(0.25), lineWidth: 0.6)
+        )
+        .onChange(of: card.nextPaymentDate) { _, newValue in
+            paymentDate = newValue
+        }
+        .onChange(of: card.nextPaymentAmount) { _, newValue in
+            amountText = newValue > 0 ? "\(Int(newValue))" : ""
+        }
+    }
+
+    private func save() {
+        dm.updateCreditCardSchedule(
+            cardID: card.id,
+            nextPaymentDate: paymentDate,
+            nextPaymentAmount: Double(amountText.replacingOccurrences(of: ",", with: "")) ?? 0
+        )
+    }
+}
+
+// ─────────────────────────────────────────
 // MARK: Credit Card Detail Row
 // ─────────────────────────────────────────
 struct CreditCardDetailRow: View {
+    @EnvironmentObject var dm: DataManager
     let card: CreditCard
     let onEdit: () -> Void
+
+    private var billingAmount: Double {
+        dm.currentMonthBillingAmount(for: card)
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -231,12 +352,15 @@ struct CreditCardDetailRow: View {
                     Text("****\(card.cardLastFour)")
                         .font(GMFont.caption(10))
                         .foregroundStyle(Color.gmTextTertiary)
+                    Text("引き落とし銀行: \(dm.linkedBankName(for: card))")
+                        .font(GMFont.caption(10))
+                        .foregroundStyle(Color.gmTextTertiary)
                 }
 
                 Spacer()
 
                 VStack(alignment: .trailing, spacing: 4) {
-                    Text(card.nextBillingAmount.jpyFormatted)
+                    Text(billingAmount.jpyFormatted)
                         .font(GMFont.mono(15, weight: .bold))
                         .foregroundStyle(Color.gmTextPrimary)
                     Button(action: onEdit) {
@@ -297,7 +421,7 @@ struct BillingDayHeatmap: View {
     private func amountForDay(_ day: Int) -> Double {
         let cards = dm.creditCards.filter { $0.billingDay == day }
         let costs = dm.fixedCosts.filter { $0.isActive && $0.billingDay == day }
-        return cards.reduce(0) { $0 + $1.nextBillingAmount }
+        return cards.reduce(0) { $0 + dm.currentMonthBillingAmount(for: $1) }
              + costs.reduce(0) { $0 + $1.amount }
     }
 
@@ -373,13 +497,14 @@ struct CreditCardFormSheet: View {
     let card: CreditCard?
     let onSave: (CreditCard) -> Void
     @Environment(\.dismiss) var dismiss
+    @EnvironmentObject var dm: DataManager
 
     @State private var cardName: String = ""
     @State private var issuerName: String = ""
     @State private var billingDayText: String = "27"
-    @State private var nextBillingText: String = ""
     @State private var creditLimitText: String = ""
     @State private var cardLastFour: String = ""
+    @State private var selectedBankID: UUID?
 
     var isEditing: Bool { card != nil }
 
@@ -401,8 +526,13 @@ struct CreditCardFormSheet: View {
                     Section {
                         GMFormField(label: "引き落とし日", placeholder: "27", text: $billingDayText)
                             .keyboardType(.numberPad)
-                        GMFormField(label: "今月の請求額（円）", placeholder: "0", text: $nextBillingText)
-                            .keyboardType(.numberPad)
+                        Picker("引き落とし銀行", selection: bankSelectionBinding) {
+                            Text("未設定").tag(Optional<UUID>.none)
+                            ForEach(dm.bankAccounts) { account in
+                                Text(account.name).tag(Optional(account.id))
+                            }
+                        }
+                        .tint(Color.gmGold)
                         GMFormField(label: "限度額（円）", placeholder: "0", text: $creditLimitText)
                             .keyboardType(.numberPad)
                     } header: {
@@ -436,21 +566,36 @@ struct CreditCardFormSheet: View {
         cardName       = c.cardName
         issuerName     = c.issuerName
         billingDayText = "\(c.billingDay)"
-        nextBillingText = "\(Int(c.nextBillingAmount))"
         creditLimitText = "\(Int(c.creditLimit))"
         cardLastFour   = c.cardLastFour
+        selectedBankID = c.linkedBankAccountID
+    }
+
+    private var bankSelectionBinding: Binding<UUID?> {
+        Binding(
+            get: {
+                selectedBankID ?? dm.bankAccounts.first?.id
+            },
+            set: { selectedBankID = $0 }
+        )
     }
 
     private func save() {
+        let defaultPaymentDate = Calendar.current.date(byAdding: .day, value: 1, to: Date()) ?? Date()
+        let paymentDate = card?.nextPaymentDate ?? defaultPaymentDate
+        let paymentAmount = card?.nextPaymentAmount ?? 0
         let updated = CreditCard(
             id: card?.id ?? UUID(),
             cardName: cardName,
             issuerName: issuerName,
             billingDay: Int(billingDayText) ?? 27,
-            nextBillingAmount: Double(nextBillingText) ?? 0,
+            nextBillingAmount: card?.nextBillingAmount ?? 0,
+            nextPaymentDate: paymentDate,
+            nextPaymentAmount: paymentAmount,
             creditLimit: Double(creditLimitText) ?? 0,
-            currentUsage: Double(nextBillingText) ?? 0,
-            cardLastFour: cardLastFour.isEmpty ? "****" : cardLastFour
+            currentUsage: card?.currentUsage ?? 0,
+            cardLastFour: cardLastFour.isEmpty ? "****" : cardLastFour,
+            linkedBankAccountID: bankSelectionBinding.wrappedValue
         )
         onSave(updated)
         dismiss()
