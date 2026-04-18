@@ -83,57 +83,61 @@ struct MainTabView: View {
     }
 
     var body: some View {
-        // VStack: content fills available space, bar is pinned at bottom
-        VStack(spacing: 0) {
+        GeometryReader { proxy in
+            // VStack: content fills available space, bar is pinned at bottom
+            VStack(spacing: 0) {
 
-            // ── Tab content ──────────────────────────────────────────
-            TabView(selection: $selectedTab) {
+                // ── Tab content ──────────────────────────────────────────
+                TabView(selection: $selectedTab) {
 
-                NavigationStack {
-                    DashboardView()
-                        .environmentObject(viewModel)
-                        .environmentObject(dataManager)
+                    NavigationStack {
+                        DashboardView()
+                            .environmentObject(viewModel)
+                            .environmentObject(dataManager)
+                    }
+                    .tag(0)
+
+                    NavigationStack {
+                        WealthCalendarView()
+                            .environmentObject(dataManager)
+                    }
+                    .tag(1)
+
+                    NavigationStack {
+                        MirrorView()
+                            .environmentObject(viewModel)
+                            .environmentObject(ocrViewModel)
+                    }
+                    .tag(2)
+
+                    NavigationStack {
+                        AnalysisView()
+                            .environmentObject(viewModel)
+                            .environmentObject(dataManager)
+                            .environmentObject(ocrViewModel)
+                    }
+                    .tag(3)
+
+                    NavigationStack {
+                        SettingsView()
+                            .environmentObject(dataManager)
+                            .environmentObject(viewModel)
+                    }
+                    .tag(4)
                 }
-                .tag(0)
+                // Keep iOS state restoration; hides page dots
+                .tabViewStyle(.automatic)
+                // TabView takes all remaining space above the bar
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
 
-                NavigationStack {
-                    WealthCalendarView()
-                        .environmentObject(dataManager)
-                }
-                .tag(1)
-
-                NavigationStack {
-                    MirrorView()
-                        .environmentObject(viewModel)
-                        .environmentObject(ocrViewModel)
-                }
-                .tag(2)
-
-                NavigationStack {
-                    AnalysisView()
-                        .environmentObject(viewModel)
-                        .environmentObject(dataManager)
-                        .environmentObject(ocrViewModel)
-                }
-                .tag(3)
-
-                NavigationStack {
-                    SettingsView()
-                        .environmentObject(dataManager)
-                        .environmentObject(viewModel)
-                }
-                .tag(4)
+                // ── Custom Tab Bar (always at bottom) ────────────────────
+                GMCustomTabBar(
+                    selectedTab: $selectedTab,
+                    bottomSafeArea: proxy.safeAreaInsets.bottom,
+                    onFABTap: { showIncome = true }
+                )
             }
-            // Keep iOS state restoration; hides page dots
-            .tabViewStyle(.automatic)
-            // TabView takes all remaining space above the bar
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-
-            // ── Custom Tab Bar (always at bottom) ────────────────────
-            GMCustomTabBar(
-                selectedTab: $selectedTab,
-                onFABTap: { showIncome = true }
-            )
+            .ignoresSafeArea(.container, edges: .bottom)
         }
         // Background fills entire screen including safe areas
         .background(Color.gmBackground.ignoresSafeArea())
@@ -150,6 +154,7 @@ struct MainTabView: View {
 // ─────────────────────────────────────────
 struct GMCustomTabBar: View {
     @Binding var selectedTab: Int
+    let bottomSafeArea: CGFloat
     let onFABTap: () -> Void
     @Namespace private var pill
 
@@ -177,7 +182,6 @@ struct GMCustomTabBar: View {
 
                 // Opaque background that also covers the home indicator area
                 Color.gmTabBackground
-                    .ignoresSafeArea(edges: .bottom)
 
                 // Tab icon row
                 HStack(alignment: .center, spacing: 0) {
@@ -194,7 +198,9 @@ struct GMCustomTabBar: View {
                     .offset(y: -(GMTabBarConstants.fabDiameter / 2
                                  + GMTabBarConstants.fabLift))
             }
+            .frame(height: GMTabBarConstants.barHeight + bottomSafeArea)
         }
+        .frame(height: GMTabBarConstants.barHeight + bottomSafeArea + 0.5)
         .shadow(color: .black.opacity(0.75), radius: 12, x: 0, y: -3)
     }
 
