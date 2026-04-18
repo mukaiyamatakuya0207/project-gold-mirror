@@ -26,13 +26,13 @@ struct DashboardView: View {
 
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 0) {
-                    // 1. Custom Hero Header (covers status bar)
+                    // 1. Custom Hero Header – fills behind status bar
                     DashboardHeaderView(showNotifications: $showNotifications)
 
-                    // 2. Net Worth Summary Card
+                    // 2. Net Worth Summary Card  (20pt breathing room below header)
                     NetWorthSummaryCard()
                         .padding(.horizontal, GMSpacing.md)
-                        .padding(.top, GMSpacing.lg)
+                        .padding(.top, 20)
                         .padding(.bottom, GMSpacing.lg)
 
                     // 3. Next Billing Countdown Banner
@@ -113,8 +113,9 @@ struct DashboardView: View {
                 }
             }
         }
-        // ── Hide system navigation bar completely ──
+        // ── Hide system navigation bar + its reserved space ──
         .toolbar(.hidden, for: .navigationBar)
+        .toolbarBackground(.hidden, for: .navigationBar)
         // ── Sub-screen navigation ──
         .navigationDestination(for: DashboardDestination.self) { dest in
             switch dest {
@@ -161,62 +162,74 @@ struct DashboardHeaderView: View {
     }
 
     var body: some View {
-        ZStack(alignment: .bottomLeading) {
-            // Full-bleed gradient (covers status bar)
-            LinearGradient(
-                colors: [Color(hex: "#0F0D03"), Color.gmBackground],
-                startPoint: .top, endPoint: .bottom
-            )
-            .ignoresSafeArea(edges: .top)
+        // GeometryReader reads the real top safe-area inset at runtime
+        GeometryReader { proxy in
+            let topInset = proxy.safeAreaInsets.top   // e.g. 59 on iPhone 16
+            let totalH   = topInset + 96              // status bar + content area
 
-            // Gold orb glow
-            Circle()
-                .fill(RadialGradient(
-                    colors: [Color.gmGold.opacity(0.2), Color.clear],
-                    center: .center, startRadius: 0, endRadius: 130
-                ))
-                .frame(width: 260, height: 260)
-                .offset(x: -70, y: -30)
-                .blur(radius: 24)
-                .allowsHitTesting(false)
+            ZStack(alignment: .bottomLeading) {
+                // ── Full-bleed gradient: reaches behind status bar ──
+                LinearGradient(
+                    colors: [Color(hex: "#0F0D03"), Color.gmBackground],
+                    startPoint: .top, endPoint: .bottom
+                )
+                .frame(height: totalH + 4)            // +4 prevents sub-pixel gap
+                .ignoresSafeArea(edges: .top)
 
-            // Content
-            VStack(alignment: .leading, spacing: GMSpacing.xs) {
-                HStack(alignment: .center) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(greeting)
-                            .font(GMFont.caption(13, weight: .medium))
-                            .foregroundStyle(Color.gmGold.opacity(0.8))
-                        Text("Gold Mirror")
-                            .font(GMFont.display(30, weight: .bold))
-                            .foregroundStyle(GMGradient.goldHorizontal)
-                    }
-                    Spacer()
-                    // Bell button
-                    Button { showNotifications = true } label: {
-                        ZStack(alignment: .topTrailing) {
-                            Image(systemName: "bell.fill")
-                                .font(.system(size: 20, weight: .medium))
-                                .foregroundStyle(Color.gmTextSecondary)
-                                .frame(width: 44, height: 44)
-                                .background(Color.gmSurface)
-                                .clipShape(Circle())
-                                .overlay(Circle().stroke(Color.gmGoldDim.opacity(0.4), lineWidth: 0.5))
-                            Circle()
-                                .fill(Color.gmGold)
-                                .frame(width: 8, height: 8)
-                                .offset(x: 2, y: -2)
+                // ── Gold orb glow ──
+                Circle()
+                    .fill(RadialGradient(
+                        colors: [Color.gmGold.opacity(0.22), Color.clear],
+                        center: .center, startRadius: 0, endRadius: 140
+                    ))
+                    .frame(width: 280, height: 280)
+                    .offset(x: -70, y: 20)
+                    .blur(radius: 28)
+                    .allowsHitTesting(false)
+
+                // ── Text content pinned to bottom of the header ──
+                VStack(alignment: .leading, spacing: GMSpacing.xs) {
+                    HStack(alignment: .center) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(greeting)
+                                .font(GMFont.caption(13, weight: .medium))
+                                .foregroundStyle(Color.gmGold.opacity(0.8))
+                            Text("Gold Mirror")
+                                .font(GMFont.display(30, weight: .bold))
+                                .foregroundStyle(GMGradient.goldHorizontal)
+                        }
+                        Spacer()
+                        // Bell button
+                        Button { showNotifications = true } label: {
+                            ZStack(alignment: .topTrailing) {
+                                Image(systemName: "bell.fill")
+                                    .font(.system(size: 20, weight: .medium))
+                                    .foregroundStyle(Color.gmTextSecondary)
+                                    .frame(width: 44, height: 44)
+                                    .background(Color.gmSurface)
+                                    .clipShape(Circle())
+                                    .overlay(Circle().stroke(Color.gmGoldDim.opacity(0.4),
+                                                             lineWidth: 0.5))
+                                Circle()
+                                    .fill(Color.gmGold)
+                                    .frame(width: 8, height: 8)
+                                    .offset(x: 2, y: -2)
+                            }
                         }
                     }
+                    Text(dateStr)
+                        .font(GMFont.caption(12))
+                        .foregroundStyle(Color.gmTextTertiary)
                 }
-                Text(dateStr)
-                    .font(GMFont.caption(12))
-                    .foregroundStyle(Color.gmTextTertiary)
+                .padding(.horizontal, GMSpacing.md)
+                .padding(.bottom, GMSpacing.md)
             }
-            .padding(.horizontal, GMSpacing.md)
-            .padding(.bottom, GMSpacing.md)
+            .frame(width: proxy.size.width, height: totalH)
         }
-        .frame(height: 140)
+        // Fixed height that accounts for status bar + content
+        .frame(height: 96 + (UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .first?.windows.first?.safeAreaInsets.top ?? 47))
         .ignoresSafeArea(edges: .top)
     }
 }

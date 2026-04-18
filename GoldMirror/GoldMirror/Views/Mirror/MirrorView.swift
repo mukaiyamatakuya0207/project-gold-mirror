@@ -85,6 +85,7 @@ struct MirrorView: View {
             }
         }
         .toolbar(.hidden, for: .navigationBar)
+        .toolbarBackground(.hidden, for: .navigationBar)
         .sheet(isPresented: $showCompose) {
             ComposePostView()
                 .environmentObject(ocrVM)

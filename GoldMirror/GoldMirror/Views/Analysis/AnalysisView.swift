@@ -54,6 +54,7 @@ struct AnalysisView: View {
             }
         }
         .toolbar(.hidden, for: .navigationBar)
+        .toolbarBackground(.hidden, for: .navigationBar)
     }
 }
 

@@ -209,6 +209,7 @@ struct SettingsView: View {
             }
         }
         .toolbar(.hidden, for: .navigationBar)
+        .toolbarBackground(.hidden, for: .navigationBar)
         .sheet(isPresented: $showProfileEdit) {
             ProfileEditSheet(displayName: $displayName, tagline: $tagline)
         }

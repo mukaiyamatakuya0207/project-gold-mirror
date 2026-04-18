@@ -64,6 +64,7 @@ struct WealthCalendarView: View {
             }
         }
         .toolbar(.hidden, for: .navigationBar)
+        .toolbarBackground(.hidden, for: .navigationBar)
     }
 
     // ─── Calendar Card ───
