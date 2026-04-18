@@ -62,8 +62,8 @@ enum GMTab: Int, CaseIterable {
 // ─────────────────────────────────────────
 enum GMTabBarConstants {
     static let barHeight:   CGFloat = 60
-    static let fabDiameter: CGFloat = 62
-    static let fabLift:     CGFloat = 14
+    static let fabDiameter: CGFloat = 56
+    static let floatingActionBottomPadding: CGFloat = 20
 }
 
 // ─────────────────────────────────────────
@@ -84,60 +84,70 @@ struct MainTabView: View {
 
     var body: some View {
         GeometryReader { proxy in
-            // VStack: content fills available space, bar is pinned at bottom
-            VStack(spacing: 0) {
+            ZStack(alignment: .bottomTrailing) {
+                // VStack: content fills available space, bar is pinned at bottom
+                VStack(spacing: 0) {
 
-                // ── Tab content ──────────────────────────────────────────
-                TabView(selection: $selectedTab) {
+                    // ── Tab content ──────────────────────────────────────────
+                    TabView(selection: $selectedTab) {
 
-                    NavigationStack {
-                        DashboardView()
-                            .environmentObject(viewModel)
-                            .environmentObject(dataManager)
+                        NavigationStack {
+                            DashboardView()
+                                .environmentObject(viewModel)
+                                .environmentObject(dataManager)
+                        }
+                        .tag(0)
+
+                        NavigationStack {
+                            WealthCalendarView()
+                                .environmentObject(dataManager)
+                        }
+                        .tag(1)
+
+                        NavigationStack {
+                            MirrorView()
+                                .environmentObject(viewModel)
+                                .environmentObject(ocrViewModel)
+                        }
+                        .tag(2)
+
+                        NavigationStack {
+                            AnalysisView()
+                                .environmentObject(viewModel)
+                                .environmentObject(dataManager)
+                                .environmentObject(ocrViewModel)
+                        }
+                        .tag(3)
+
+                        NavigationStack {
+                            SettingsView()
+                                .environmentObject(dataManager)
+                                .environmentObject(viewModel)
+                        }
+                        .tag(4)
                     }
-                    .tag(0)
+                    // Keep iOS state restoration; hides page dots
+                    .tabViewStyle(.automatic)
+                    // TabView takes all remaining space above the bar
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
 
-                    NavigationStack {
-                        WealthCalendarView()
-                            .environmentObject(dataManager)
-                    }
-                    .tag(1)
-
-                    NavigationStack {
-                        MirrorView()
-                            .environmentObject(viewModel)
-                            .environmentObject(ocrViewModel)
-                    }
-                    .tag(2)
-
-                    NavigationStack {
-                        AnalysisView()
-                            .environmentObject(viewModel)
-                            .environmentObject(dataManager)
-                            .environmentObject(ocrViewModel)
-                    }
-                    .tag(3)
-
-                    NavigationStack {
-                        SettingsView()
-                            .environmentObject(dataManager)
-                            .environmentObject(viewModel)
-                    }
-                    .tag(4)
+                    // ── Custom Tab Bar (always at bottom) ────────────────────
+                    GMCustomTabBar(
+                        selectedTab: $selectedTab,
+                        bottomSafeArea: proxy.safeAreaInsets.bottom
+                    )
                 }
-                // Keep iOS state restoration; hides page dots
-                .tabViewStyle(.automatic)
-                // TabView takes all remaining space above the bar
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .ignoresSafeArea(.container, edges: .bottom)
 
-                // ── Custom Tab Bar (always at bottom) ────────────────────
-                GMCustomTabBar(
-                    selectedTab: $selectedTab,
-                    bottomSafeArea: proxy.safeAreaInsets.bottom,
-                    onFABTap: { showIncome = true }
-                )
+                if selectedTab != GMTab.mirror.rawValue {
+                    incomeFloatingButton
+                        .padding(.trailing, GMSpacing.lg)
+                        .padding(.bottom, GMTabBarConstants.barHeight
+                                 + proxy.safeAreaInsets.bottom
+                                 + GMTabBarConstants.floatingActionBottomPadding)
+                        .transition(.scale.combined(with: .opacity))
+                }
             }
-            .ignoresSafeArea(.container, edges: .bottom)
         }
         // Background fills entire screen including safe areas
         .background(Color.gmBackground.ignoresSafeArea())
@@ -147,6 +157,27 @@ struct MainTabView: View {
                 .environmentObject(dataManager)
         }
     }
+
+    private var incomeFloatingButton: some View {
+        Button { showIncome = true } label: {
+            ZStack {
+                Circle()
+                    .fill(GMGradient.goldDiagonal)
+                    .frame(width: GMTabBarConstants.fabDiameter,
+                           height: GMTabBarConstants.fabDiameter)
+                    .gmGoldGlow(radius: 16, opacity: 0.5)
+
+                Image(systemName: "plus")
+                    .font(.system(size: 22, weight: .bold))
+                    .foregroundStyle(Color.black)
+            }
+        }
+        .frame(width: GMTabBarConstants.fabDiameter,
+               height: GMTabBarConstants.fabDiameter)
+        .contentShape(Circle())
+        .buttonStyle(.plain)
+        .zIndex(2)
+    }
 }
 
 // ─────────────────────────────────────────
@@ -155,7 +186,6 @@ struct MainTabView: View {
 struct GMCustomTabBar: View {
     @Binding var selectedTab: Int
     let bottomSafeArea: CGFloat
-    let onFABTap: () -> Void
     @Namespace private var pill
 
     private let leftTabs: [(Int, String, String)] = [
@@ -192,11 +222,6 @@ struct GMCustomTabBar: View {
                 .frame(height: GMTabBarConstants.barHeight)
                 .padding(.top, 4)
 
-                // FAB – raised above bar top edge
-                fabButton
-                    .frame(maxWidth: .infinity, alignment: .center)
-                    .offset(y: -(GMTabBarConstants.fabDiameter / 2
-                                 + GMTabBarConstants.fabLift))
             }
             .frame(height: GMTabBarConstants.barHeight + bottomSafeArea)
         }
@@ -238,29 +263,6 @@ struct GMCustomTabBar: View {
         .buttonStyle(.plain)
     }
 
-    // ── FAB ──────────────────────────────────────────────────────────────
-    private var fabButton: some View {
-        Button(action: onFABTap) {
-            ZStack {
-                Circle()
-                    .fill(Color.gmTabBackground)
-                    .frame(width: GMTabBarConstants.fabDiameter + 8,
-                           height: GMTabBarConstants.fabDiameter + 8)
-                Circle()
-                    .fill(LinearGradient(
-                        colors: [Color.gmGoldLight, Color.gmGold, Color.gmGoldDim],
-                        startPoint: .topLeading, endPoint: .bottomTrailing
-                    ))
-                    .frame(width: GMTabBarConstants.fabDiameter,
-                           height: GMTabBarConstants.fabDiameter)
-                    .shadow(color: Color.gmGold.opacity(0.55), radius: 10, x: 0, y: 3)
-                Image(systemName: "plus")
-                    .font(.system(size: 24, weight: .bold))
-                    .foregroundStyle(Color.gmBackground)
-            }
-        }
-        .buttonStyle(.plain)
-    }
 }
 
 // ─────────────────────────────────────────

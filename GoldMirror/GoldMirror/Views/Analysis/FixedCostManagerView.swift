@@ -12,60 +12,59 @@ struct FixedCostManagerView: View {
     @State private var selectedSegment: Int = 0   // 0=サブスク, 1=固定費
 
     var body: some View {
-        NavigationStack {
-            ZStack {
-                Color.gmBackground.ignoresSafeArea()
+        ZStack {
+            Color.gmBackground.ignoresSafeArea()
 
-                ScrollView(showsIndicators: false) {
-                    VStack(spacing: GMSpacing.lg) {
+            ScrollView(showsIndicators: false) {
+                VStack(spacing: GMSpacing.lg) {
 
-                        // ── Header ──
-                        FixedCostPageHeader()
+                    // ── Header ──
+                    FixedCostPageHeader()
 
-                        // ── Annual Summary ──
-                        AnnualSummaryCard()
-                            .padding(.horizontal, GMSpacing.md)
-
-                        // ── Segment Switch ──
-                        GMSegmentPicker(
-                            options: ["サブスク", "固定費"],
-                            selected: $selectedSegment
-                        )
+                    // ── Annual Summary ──
+                    AnnualSummaryCard()
                         .padding(.horizontal, GMSpacing.md)
 
-                        // ── Content ──
-                        if selectedSegment == 0 {
-                            SubscriptionListSection(editingSub: $editingSub) {
-                                showAddSubscription = true
-                            }
-                        } else {
-                            FixedCostListSection(editingCost: $editingCost) {
-                                showAddFixedCost = true
-                            }
+                    // ── Segment Switch ──
+                    GMSegmentPicker(
+                        options: ["サブスク", "固定費"],
+                        selected: $selectedSegment
+                    )
+                    .padding(.horizontal, GMSpacing.md)
+
+                    // ── Content ──
+                    if selectedSegment == 0 {
+                        SubscriptionListSection(editingSub: $editingSub) {
+                            showAddSubscription = true
                         }
-
-                        // ── Waste Analysis ──
-                        WasteAnalysisCard()
-                            .padding(.horizontal, GMSpacing.md)
-
-                        Spacer().frame(height: 100)
+                    } else {
+                        FixedCostListSection(editingCost: $editingCost) {
+                            showAddFixedCost = true
+                        }
                     }
-                    .padding(.top, GMSpacing.md)
+
+                    // ── Waste Analysis ──
+                    WasteAnalysisCard()
+                        .padding(.horizontal, GMSpacing.md)
+
+                    Spacer().frame(height: 100)
                 }
+                .padding(.top, GMSpacing.md)
             }
-            .navigationBarHidden(true)
-            .sheet(isPresented: $showAddSubscription) {
-                SubscriptionFormSheet(sub: nil) { dm.addSubscription($0) }
-            }
-            .sheet(isPresented: $showAddFixedCost) {
-                FixedCostFormSheet(cost: nil) { dm.addFixedCost($0) }
-            }
-            .sheet(item: $editingSub) { sub in
-                SubscriptionFormSheet(sub: sub) { dm.updateSubscription($0) }
-            }
-            .sheet(item: $editingCost) { cost in
-                FixedCostFormSheet(cost: cost) { dm.updateFixedCost($0) }
-            }
+        }
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbarBackground(Color.gmBackground, for: .navigationBar)
+        .sheet(isPresented: $showAddSubscription) {
+            SubscriptionFormSheet(sub: nil) { dm.addSubscription($0) }
+        }
+        .sheet(isPresented: $showAddFixedCost) {
+            FixedCostFormSheet(cost: nil) { dm.addFixedCost($0) }
+        }
+        .sheet(item: $editingSub) { sub in
+            SubscriptionFormSheet(sub: sub) { dm.updateSubscription($0) }
+        }
+        .sheet(item: $editingCost) { cost in
+            FixedCostFormSheet(cost: cost) { dm.updateFixedCost($0) }
         }
     }
 }
@@ -532,8 +531,8 @@ struct SubscriptionFormSheet: View {
                 Color.gmBackground.ignoresSafeArea()
                 Form {
                     Section {
-                        GMFormField(label: "サービス名", placeholder: "Netflix", text: $name)
-                        GMFormField(label: "金額（円）", placeholder: "1980", text: $amountText)
+                        GMFormField(label: "サービス名", placeholder: "サービス名", text: $name)
+                        GMFormField(label: "金額（円）", placeholder: "0", text: $amountText)
                             .keyboardType(.numberPad)
                         GMFormField(label: "引き落とし日", placeholder: "1", text: $billingDayText)
                             .keyboardType(.numberPad)

@@ -138,33 +138,9 @@ final class NotificationManager: ObservableObject {
         unreadCount = 0
     }
 
-    // ── Mock history data ──
+    // ── Seed history data ──
     private func loadMockHistory() {
-        history = [
-            GMNotificationItem(
-                title: "💳 楽天カード引き落とし3日前",
-                body: "3日後に ¥89,540 の引き落としがあります。残高を確認してください。",
-                date: Date().addingTimeInterval(-3600 * 2)
-            ),
-            GMNotificationItem(
-                title: "📊 今月の資産更新",
-                body: "今月の総資産が ¥4,820,000 になりました。先月比 +2.3%",
-                date: Date().addingTimeInterval(-86400),
-                isRead: true
-            ),
-            GMNotificationItem(
-                title: "💳 三井住友カード引き落とし1週間前",
-                body: "7日後に ¥54,200 の引き落としがあります。",
-                date: Date().addingTimeInterval(-86400 * 3),
-                isRead: true
-            ),
-            GMNotificationItem(
-                title: "✅ サブスク更新のお知らせ",
-                body: "Netflixが明日更新されます。¥1,490",
-                date: Date().addingTimeInterval(-86400 * 5),
-                isRead: true
-            ),
-        ]
+        history = []
         unreadCount = history.filter { !$0.isRead }.count
     }
 }

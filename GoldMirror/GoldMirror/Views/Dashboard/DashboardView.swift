@@ -4,13 +4,6 @@
 import SwiftUI
 
 // ─────────────────────────────────────────
-// MARK: Navigation Destination Tag
-// ─────────────────────────────────────────
-enum DashboardDestination: Hashable {
-    case cardTracker, fixedCost, projection
-}
-
-// ─────────────────────────────────────────
 // MARK: DashboardView
 // ─────────────────────────────────────────
 struct DashboardView: View {
@@ -21,117 +14,100 @@ struct DashboardView: View {
     @State private var showNotifications   = false
 
     var body: some View {
-        ZStack {
-            Color.gmBackground.ignoresSafeArea()
+        GeometryReader { proxy in
+            ZStack {
+                Color.gmBackground.ignoresSafeArea()
 
-            ScrollView(showsIndicators: false) {
-                VStack(spacing: 0) {
-                    // 1. Custom Hero Header – fills behind status bar
-                    DashboardHeaderView(showNotifications: $showNotifications)
+                ScrollView(showsIndicators: false) {
+                    VStack(spacing: 0) {
+                        // 1. Custom Hero Header – fills behind status bar
+                        DashboardHeaderView(
+                            topInset: proxy.safeAreaInsets.top,
+                            showNotifications: $showNotifications
+                        )
 
-                    // 2. Net Worth Summary Card  (20pt breathing room below header)
-                    NetWorthSummaryCard()
-                        .padding(.horizontal, GMSpacing.md)
-                        .padding(.top, 20)
-                        .padding(.bottom, GMSpacing.lg)
+                        // 2. Net Worth Summary Card  (20pt breathing room below header)
+                        NetWorthSummaryCard()
+                            .padding(.horizontal, GMSpacing.md)
+                            .padding(.top, 20)
+                            .padding(.bottom, GMSpacing.lg)
 
-                    // 3. Next Billing Countdown Banner
-                    if let summary = dm.nextBillingSummary {
-                        NavigationLink(value: DashboardDestination.cardTracker) {
+                        // 3. Next Billing Countdown Banner
+                        if let summary = dm.nextBillingSummary {
                             NextBillingCountdownBanner(summary: summary)
+                                .padding(.horizontal, GMSpacing.md)
+                                .padding(.bottom, GMSpacing.lg)
                         }
-                        .buttonStyle(.plain)
-                        .padding(.horizontal, GMSpacing.md)
-                        .padding(.bottom, GMSpacing.lg)
-                    }
 
-                    // 4. Asset Allocation Bar
-                    AssetAllocationBar()
-                        .padding(.horizontal, GMSpacing.md)
-                        .padding(.bottom, GMSpacing.lg)
-
-                    // 5. Bank Accounts Section
-                    SectionHeader(
-                        title: "現金・預金",
-                        icon: "building.columns.fill",
-                        accentColor: .gmGold
-                    ) { withAnimation { showAllBankAccounts.toggle() } }
-                    .padding(.horizontal, GMSpacing.md)
-                    .padding(.bottom, GMSpacing.sm)
-
-                    ForEach(showAllBankAccounts ? vm.bankAccounts : Array(vm.bankAccounts.prefix(2))) { acct in
-                        BankAccountRow(account: acct)
+                        // 4. Asset Allocation Bar
+                        AssetAllocationBar()
                             .padding(.horizontal, GMSpacing.md)
-                            .padding(.bottom, GMSpacing.sm)
-                            .transition(.move(edge: .top).combined(with: .opacity))
-                    }
+                            .padding(.bottom, GMSpacing.lg)
 
-                    // 6. Securities Section
-                    SectionHeader(
-                        title: "証券・投資",
-                        icon: "chart.line.uptrend.xyaxis",
-                        accentColor: .gmGold
-                    ) { withAnimation { showAllSecurities.toggle() } }
-                    .padding(.horizontal, GMSpacing.md)
-                    .padding(.top, GMSpacing.md)
-                    .padding(.bottom, GMSpacing.sm)
-
-                    ForEach(showAllSecurities ? vm.securitiesAccounts : Array(vm.securitiesAccounts.prefix(2))) { acct in
-                        SecuritiesAccountRow(account: acct)
-                            .padding(.horizontal, GMSpacing.md)
-                            .padding(.bottom, GMSpacing.sm)
-                            .transition(.move(edge: .top).combined(with: .opacity))
-                    }
-
-                    // 7. Credit Card Section
-                    SectionHeader(
-                        title: "今月の引き落とし",
-                        icon: "creditcard.fill",
-                        accentColor: .gmGold
-                    ) { }
-                    .padding(.horizontal, GMSpacing.md)
-                    .padding(.top, GMSpacing.md)
-                    .padding(.bottom, GMSpacing.sm)
-
-                    CreditCardSummaryCard()
+                        // 5. Bank Accounts Section
+                        SectionHeader(
+                            title: "現金・預金",
+                            icon: "building.columns.fill",
+                            accentColor: .gmGold
+                        ) { withAnimation { showAllBankAccounts.toggle() } }
                         .padding(.horizontal, GMSpacing.md)
                         .padding(.bottom, GMSpacing.sm)
 
-                    ForEach(vm.creditCards.prefix(2)) { card in
-                        CreditCardRow(card: card)
-                            .padding(.horizontal, GMSpacing.md)
-                            .padding(.bottom, GMSpacing.sm)
-                    }
+                        ForEach(showAllBankAccounts ? dm.bankAccounts : Array(dm.bankAccounts.prefix(2))) { acct in
+                            BankAccountRow(account: acct)
+                                .padding(.horizontal, GMSpacing.md)
+                                .padding(.bottom, GMSpacing.sm)
+                                .transition(.move(edge: .top).combined(with: .opacity))
+                        }
 
-                    // 8. Quick Actions
-                    DashboardQuickActions()
+                        // 6. Securities Section
+                        SectionHeader(
+                            title: "証券・投資",
+                            icon: "chart.line.uptrend.xyaxis",
+                            accentColor: .gmGold
+                        ) { withAnimation { showAllSecurities.toggle() } }
                         .padding(.horizontal, GMSpacing.md)
                         .padding(.top, GMSpacing.md)
+                        .padding(.bottom, GMSpacing.sm)
 
-                    // Bottom clearance: tab bar (82) + FAB overhang (28) + margin
-                    Spacer().frame(height: 28)  // FAB overhang above bar top edge
+                        ForEach(showAllSecurities ? dm.securitiesAccounts : Array(dm.securitiesAccounts.prefix(2))) { acct in
+                            SecuritiesAccountRow(account: acct)
+                                .padding(.horizontal, GMSpacing.md)
+                                .padding(.bottom, GMSpacing.sm)
+                                .transition(.move(edge: .top).combined(with: .opacity))
+                        }
+
+                        // 7. Credit Card Section
+                        SectionHeader(
+                            title: "今月の引き落とし",
+                            icon: "creditcard.fill",
+                            accentColor: .gmGold
+                        ) { }
+                        .padding(.horizontal, GMSpacing.md)
+                        .padding(.top, GMSpacing.md)
+                        .padding(.bottom, GMSpacing.sm)
+
+                        CreditCardSummaryCard()
+                            .padding(.horizontal, GMSpacing.md)
+                            .padding(.bottom, GMSpacing.sm)
+
+                        ForEach(dm.creditCards.prefix(2)) { card in
+                            CreditCardRow(card: card)
+                                .padding(.horizontal, GMSpacing.md)
+                                .padding(.bottom, GMSpacing.sm)
+                        }
+
+                        Spacer().frame(height: 100)
+                    }
                 }
+                .ignoresSafeArea(.container, edges: .top)
             }
         }
         // ── Hide system navigation bar + its reserved space ──
+        .navigationBarTitleDisplayMode(.inline)
         .navigationBarHidden(true)
         .toolbar(.hidden, for: .navigationBar)
         .toolbarBackground(.hidden, for: .navigationBar)
-        // ── Sub-screen navigation ──
-        .navigationDestination(for: DashboardDestination.self) { dest in
-            switch dest {
-            case .cardTracker:
-                CreditCardTrackerView()
-                    .environmentObject(dm)
-                    .environmentObject(vm)
-            case .fixedCost:
-                FixedCostManagerView()
-                    .environmentObject(dm)
-            case .projection:
-                ProjectionView()
-                    .environmentObject(dm)
-            }
-        }
         // ── Notification sheet ──
         .sheet(isPresented: $showNotifications) {
             NotificationHistoryView()
@@ -143,6 +119,7 @@ struct DashboardView: View {
 // MARK: Dashboard Header
 // ─────────────────────────────────────────
 struct DashboardHeaderView: View {
+    let topInset: CGFloat
     @Binding var showNotifications: Bool
 
     private var greeting: String {
@@ -163,75 +140,50 @@ struct DashboardHeaderView: View {
     }
 
     var body: some View {
-        // GeometryReader reads the real top safe-area inset at runtime
-        GeometryReader { proxy in
-            let topInset = proxy.safeAreaInsets.top   // e.g. 59 on iPhone 16
-            let totalH   = topInset + 96              // status bar + content area
+        ZStack(alignment: .bottomLeading) {
+            LinearGradient(
+                colors: [Color(hex: "#0F0D03"), Color.gmBackground],
+                startPoint: .top, endPoint: .bottom
+            )
+            .ignoresSafeArea(edges: .top)
 
-            ZStack(alignment: .bottomLeading) {
-                // ── Full-bleed gradient: reaches behind status bar ──
-                LinearGradient(
-                    colors: [Color(hex: "#0F0D03"), Color.gmBackground],
-                    startPoint: .top, endPoint: .bottom
-                )
-                .frame(height: totalH + 4)            // +4 prevents sub-pixel gap
-                .ignoresSafeArea(edges: .top)
-
-                // ── Gold orb glow ──
-                Circle()
-                    .fill(RadialGradient(
-                        colors: [Color.gmGold.opacity(0.22), Color.clear],
-                        center: .center, startRadius: 0, endRadius: 140
-                    ))
-                    .frame(width: 280, height: 280)
-                    .offset(x: -70, y: 20)
-                    .blur(radius: 28)
-                    .allowsHitTesting(false)
-
-                // ── Text content pinned to bottom of the header ──
-                VStack(alignment: .leading, spacing: GMSpacing.xs) {
-                    HStack(alignment: .center) {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(greeting)
-                                .font(GMFont.caption(13, weight: .medium))
-                                .foregroundStyle(Color.gmGold.opacity(0.8))
-                            Text("Gold Mirror")
-                                .font(GMFont.display(30, weight: .bold))
-                                .foregroundStyle(GMGradient.goldHorizontal)
-                        }
-                        Spacer()
-                        // Bell button
-                        Button { showNotifications = true } label: {
-                            ZStack(alignment: .topTrailing) {
-                                Image(systemName: "bell.fill")
-                                    .font(.system(size: 20, weight: .medium))
-                                    .foregroundStyle(Color.gmTextSecondary)
-                                    .frame(width: 44, height: 44)
-                                    .background(Color.gmSurface)
-                                    .clipShape(Circle())
-                                    .overlay(Circle().stroke(Color.gmGoldDim.opacity(0.4),
-                                                             lineWidth: 0.5))
-                                Circle()
-                                    .fill(Color.gmGold)
-                                    .frame(width: 8, height: 8)
-                                    .offset(x: 2, y: -2)
-                            }
+            VStack(alignment: .leading, spacing: GMSpacing.xs) {
+                HStack(alignment: .center) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(greeting)
+                            .font(GMFont.caption(13, weight: .medium))
+                            .foregroundStyle(Color.gmGold.opacity(0.8))
+                        Text("Gold Mirror")
+                            .font(GMFont.display(30, weight: .bold))
+                            .foregroundStyle(GMGradient.goldHorizontal)
+                    }
+                    Spacer()
+                    Button { showNotifications = true } label: {
+                        ZStack(alignment: .topTrailing) {
+                            Image(systemName: "bell.fill")
+                                .font(.system(size: 20, weight: .medium))
+                                .foregroundStyle(Color.gmTextSecondary)
+                                .frame(width: 44, height: 44)
+                                .background(Color.gmSurface)
+                                .clipShape(Circle())
+                                .overlay(Circle().stroke(Color.gmGoldDim.opacity(0.4),
+                                                         lineWidth: 0.5))
+                            Circle()
+                                .fill(Color.gmGold)
+                                .frame(width: 8, height: 8)
+                                .offset(x: 2, y: -2)
                         }
                     }
-                    Text(dateStr)
-                        .font(GMFont.caption(12))
-                        .foregroundStyle(Color.gmTextTertiary)
                 }
-                .padding(.horizontal, GMSpacing.md)
-                .padding(.bottom, GMSpacing.md)
+                Text(dateStr)
+                    .font(GMFont.caption(12))
+                    .foregroundStyle(Color.gmTextTertiary)
             }
-            .frame(width: proxy.size.width, height: totalH)
+            .padding(.horizontal, GMSpacing.md)
+            .padding(.top, max(topInset, 0) + GMSpacing.sm)
+            .padding(.bottom, GMSpacing.sm)
         }
-        // Fixed height that accounts for status bar + content
-        .frame(height: 96 + (UIApplication.shared.connectedScenes
-            .compactMap { $0 as? UIWindowScene }
-            .first?.windows.first?.safeAreaInsets.top ?? 47))
-        .ignoresSafeArea(edges: .top)
+        .frame(height: max(topInset, 0) + 86)
     }
 }
 
@@ -239,7 +191,7 @@ struct DashboardHeaderView: View {
 // MARK: Net Worth Summary Card
 // ─────────────────────────────────────────
 struct NetWorthSummaryCard: View {
-    @EnvironmentObject var vm: AssetViewModel
+    @EnvironmentObject var dm: DataManager
     @State private var isVisible = true
 
     var body: some View {
@@ -262,7 +214,7 @@ struct NetWorthSummaryCard: View {
                 }
                 Group {
                     if isVisible {
-                        Text(vm.totalAssets.jpyFormatted)
+                        Text(dm.totalAssets.jpyFormatted)
                             .font(GMFont.display(38, weight: .bold))
                             .foregroundStyle(GMGradient.goldHorizontal)
                             .transition(.scale.combined(with: .opacity))
@@ -285,7 +237,7 @@ struct NetWorthSummaryCard: View {
             HStack(spacing: 0) {
                 SummaryStatColumn(
                     label: "現金・預金",
-                    value: isVisible ? vm.totalBankBalance.jpyCompact : "••••",
+                    value: isVisible ? dm.totalBankBalance.jpyCompact : "••••",
                     icon: "banknote.fill", color: .gmGold
                 )
                 Divider().frame(width: 0.5)
@@ -293,17 +245,17 @@ struct NetWorthSummaryCard: View {
                     .padding(.vertical, GMSpacing.md)
                 SummaryStatColumn(
                     label: "証券評価額",
-                    value: isVisible ? vm.totalSecuritiesValue.jpyCompact : "••••",
+                    value: isVisible ? dm.totalSecuritiesValue.jpyCompact : "••••",
                     icon: "chart.line.uptrend.xyaxis",
-                    color: vm.totalSecuritiesProfitLoss >= 0 ? .gmPositive : .gmNegative,
-                    subValue: isVisible ? vm.totalSecuritiesProfitLossRate.signedPercent : nil
+                    color: dm.totalSecuritiesProfitLoss >= 0 ? .gmPositive : .gmNegative,
+                    subValue: isVisible ? dm.totalSecuritiesProfitLossRate.signedPercent : nil
                 )
                 Divider().frame(width: 0.5)
                     .background(Color.gmGoldDim.opacity(0.4))
                     .padding(.vertical, GMSpacing.md)
                 SummaryStatColumn(
                     label: "今月引き落とし",
-                    value: isVisible ? vm.totalMonthlyBilling.jpyCompact : "••••",
+                    value: isVisible ? dm.totalMonthlyCardBilling.jpyCompact : "••••",
                     icon: "arrow.up.right", color: .gmNegative
                 )
             }
@@ -358,7 +310,7 @@ struct SummaryStatColumn: View {
 // MARK: Asset Allocation Bar
 // ─────────────────────────────────────────
 struct AssetAllocationBar: View {
-    @EnvironmentObject var vm: AssetViewModel
+    @EnvironmentObject var dm: DataManager
 
     var body: some View {
         VStack(alignment: .leading, spacing: GMSpacing.sm) {
@@ -368,7 +320,7 @@ struct AssetAllocationBar: View {
                     .foregroundStyle(Color.gmTextSecondary)
                     .tracking(1)
                 Spacer()
-                Text("現金 \(Int(vm.bankRatio * 100))%  /  証券 \(Int((1 - vm.bankRatio) * 100))%")
+                Text("現金 \(Int(dm.bankRatio * 100))%  /  証券 \(Int((1 - dm.bankRatio) * 100))%")
                     .font(GMFont.caption(11))
                     .foregroundStyle(Color.gmTextTertiary)
             }
@@ -376,7 +328,7 @@ struct AssetAllocationBar: View {
                 HStack(spacing: 2) {
                     RoundedRectangle(cornerRadius: 4)
                         .fill(GMGradient.goldDiagonal)
-                        .frame(width: max(geo.size.width * CGFloat(vm.bankRatio) - 2, 0))
+                        .frame(width: max(geo.size.width * CGFloat(dm.bankRatio) - 2, 0))
                     RoundedRectangle(cornerRadius: 4)
                         .fill(LinearGradient(
                             colors: [Color(hex: "#1A4A2A"), Color(hex: "#2E7D4F")],
@@ -388,9 +340,9 @@ struct AssetAllocationBar: View {
             }
             .frame(height: 8)
             HStack {
-                LegendDot(color: .gmGold, label: "現金・預金 \(vm.totalBankBalance.jpyCompact)")
+                LegendDot(color: .gmGold, label: "現金・預金 \(dm.totalBankBalance.jpyCompact)")
                 Spacer()
-                LegendDot(color: Color(hex: "#2E7D4F"), label: "証券 \(vm.totalSecuritiesValue.jpyCompact)")
+                LegendDot(color: Color(hex: "#2E7D4F"), label: "証券 \(dm.totalSecuritiesValue.jpyCompact)")
             }
         }
         .padding(GMSpacing.md)
@@ -505,23 +457,23 @@ struct SecuritiesAccountRow: View {
 // MARK: Credit Card Summary Card
 // ─────────────────────────────────────────
 struct CreditCardSummaryCard: View {
-    @EnvironmentObject var vm: AssetViewModel
+    @EnvironmentObject var dm: DataManager
     var body: some View {
         HStack {
             VStack(alignment: .leading, spacing: GMSpacing.xs) {
                 Text("今月合計引き落とし予定")
                     .font(GMFont.caption(11, weight: .medium))
                     .foregroundStyle(Color.gmTextTertiary).tracking(1)
-                Text(vm.totalMonthlyBilling.jpyFormatted)
+                Text(dm.totalMonthlyCardBilling.jpyFormatted)
                     .font(GMFont.display(26, weight: .bold))
                     .foregroundStyle(Color.gmTextPrimary)
             }
             Spacer()
             VStack(alignment: .trailing, spacing: GMSpacing.xs) {
-                Text("\(vm.creditCards.count)枚のカード")
+                Text("\(dm.creditCards.count)枚のカード")
                     .font(GMFont.caption(11)).foregroundStyle(Color.gmTextTertiary)
                 HStack(spacing: -8) {
-                    ForEach(vm.creditCards.prefix(3)) { _ in
+                    ForEach(dm.creditCards.prefix(3)) { _ in
                         Image(systemName: "creditcard.fill")
                             .font(.system(size: 22)).foregroundStyle(GMGradient.goldHorizontal)
                     }
@@ -607,45 +559,6 @@ struct NextBillingCountdownBanner: View {
                     .strokeBorder(GMGradient.goldHorizontal, lineWidth: 0.8))
         )
         .gmGoldGlow(radius: 10, opacity: 0.15)
-    }
-}
-
-// ─────────────────────────────────────────
-// MARK: Dashboard Quick Actions
-// ─────────────────────────────────────────
-struct DashboardQuickActions: View {
-    var body: some View {
-        VStack(alignment: .leading, spacing: GMSpacing.sm) {
-            Text("クイックアクセス")
-                .font(GMFont.caption(12, weight: .semibold))
-                .foregroundStyle(Color.gmTextTertiary).tracking(1).padding(.bottom, 2)
-
-            HStack(spacing: GMSpacing.sm) {
-                NavigationLink(value: DashboardDestination.cardTracker) {
-                    QuickActionTile(icon: "creditcard.fill",   label: "カード管理",  color: .gmGold)
-                }
-                NavigationLink(value: DashboardDestination.fixedCost) {
-                    QuickActionTile(icon: "play.rectangle.fill", label: "固定費管理", color: Color(hex: "#CE93D8"))
-                }
-                NavigationLink(value: DashboardDestination.projection) {
-                    QuickActionTile(icon: "waveform.path.ecg", label: "資産予測",    color: Color(hex: "#4FC3F7"))
-                }
-            }
-        }
-    }
-}
-
-struct QuickActionTile: View {
-    let icon: String; let label: String; let color: Color
-    var body: some View {
-        VStack(spacing: GMSpacing.xs) {
-            ZStack {
-                RoundedRectangle(cornerRadius: GMRadius.md).fill(color.opacity(0.12)).frame(height: 52)
-                Image(systemName: icon).font(.system(size: 22, weight: .medium)).foregroundStyle(color)
-            }
-            Text(label).font(GMFont.caption(11, weight: .medium)).foregroundStyle(Color.gmTextSecondary)
-        }
-        .frame(maxWidth: .infinity)
     }
 }
 

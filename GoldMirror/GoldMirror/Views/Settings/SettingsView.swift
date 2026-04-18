@@ -112,6 +112,33 @@ struct SettingsView: View {
                     }
                     .padding(.horizontal, GMSpacing.md)
 
+                    // ── Asset Management ──
+                    SettingsSection(title: "資産管理", icon: "slider.horizontal.3") {
+                        SettingsLinkRow(
+                            icon: "creditcard.fill",
+                            iconColor: .gmGold,
+                            title: "カード管理",
+                            subtitle: "カード引き落とし・締め日を管理"
+                        ) {
+                            CreditCardTrackerView()
+                                .environmentObject(dm)
+                                .environmentObject(vm)
+                        }
+
+                        GMSettingsDivider()
+
+                        SettingsLinkRow(
+                            icon: "play.rectangle.fill",
+                            iconColor: Color(hex: "#CE93D8"),
+                            title: "固定費管理",
+                            subtitle: "サブスク・毎月の支出を整理"
+                        ) {
+                            FixedCostManagerView()
+                                .environmentObject(dm)
+                        }
+                    }
+                    .padding(.horizontal, GMSpacing.md)
+
                     // ── Profile / SNS Settings ──
                     SettingsSection(title: "プロフィール設定", icon: "person.fill") {
                         SettingsNavigationRow(
@@ -441,6 +468,46 @@ struct SettingsNavigationRow: View {
                     .foregroundStyle(Color.gmTextTertiary)
             }
             .padding(.vertical, GMSpacing.xs)
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+struct SettingsLinkRow<Destination: View>: View {
+    let icon: String
+    let iconColor: Color
+    let title: String
+    let subtitle: String
+    @ViewBuilder let destination: () -> Destination
+
+    var body: some View {
+        NavigationLink {
+            destination()
+        } label: {
+            HStack(spacing: GMSpacing.md) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(iconColor.opacity(0.15))
+                        .frame(width: 32, height: 32)
+                    Image(systemName: icon)
+                        .font(.system(size: 16, weight: .medium))
+                        .foregroundStyle(iconColor)
+                }
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                        .font(GMFont.body(14, weight: .medium))
+                        .foregroundStyle(Color.gmTextPrimary)
+                    Text(subtitle)
+                        .font(GMFont.caption(11))
+                        .foregroundStyle(Color.gmTextTertiary)
+                }
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 12))
+                    .foregroundStyle(Color.gmTextTertiary)
+            }
+            .padding(.vertical, GMSpacing.xs)
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
     }

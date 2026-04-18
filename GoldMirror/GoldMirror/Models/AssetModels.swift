@@ -97,7 +97,7 @@ struct CreditCard: Identifiable, Codable {
         issuerName: String,
         billingDay: Int,
         nextBillingAmount: Double,
-        creditLimit: Double = 1_000_000,
+        creditLimit: Double = 0,
         currentUsage: Double = 0,
         cardLastFour: String = "****",
         iconName: String = "creditcard.fill",

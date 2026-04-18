@@ -30,8 +30,30 @@ final class DataManager: ObservableObject {
         securitiesAccounts.reduce(0) { $0 + $1.evaluationAmount }
     }
 
+    var totalSecuritiesPurchase: Double {
+        securitiesAccounts.reduce(0) { $0 + $1.purchaseAmount }
+    }
+
+    var totalSecuritiesProfitLoss: Double {
+        totalSecuritiesValue - totalSecuritiesPurchase
+    }
+
+    var totalSecuritiesProfitLossRate: Double {
+        guard totalSecuritiesPurchase > 0 else { return 0 }
+        return (totalSecuritiesProfitLoss / totalSecuritiesPurchase) * 100
+    }
+
     var totalAssets: Double {
         totalBankBalance + totalSecuritiesValue
+    }
+
+    var netWorth: Double {
+        totalAssets - totalMonthlyCardBilling
+    }
+
+    var bankRatio: Double {
+        guard totalAssets > 0 else { return 0.5 }
+        return totalBankBalance / totalAssets
     }
 
     var totalMonthlyFixedCosts: Double {
@@ -49,6 +71,14 @@ final class DataManager: ObservableObject {
     /// 月間固定支出合計（固定費 + サブスク + カード）
     var totalMonthlyOutflow: Double {
         totalMonthlyFixedCosts + totalMonthlySubscriptions + totalMonthlyCardBilling
+    }
+
+    var currentMonthTransactionIncome: Double {
+        transactionTotals(in: Date()).income
+    }
+
+    var currentMonthTransactionExpense: Double {
+        transactionTotals(in: Date()).expense
     }
 
     /// 年間サブスク合計
@@ -110,29 +140,55 @@ final class DataManager: ObservableObject {
     ///   - monthlyIncome: 月収（毎月1日に入金と仮定）
     ///   - securitiesGrowthRate: 証券の月次期待リターン（デフォルト0.5%）
     func generateProjection(
-        monthlyIncome: Double = 450_000,
+        monthlyIncome: Double = 0,
         securitiesGrowthRate: Double = 0.005
     ) -> [ProjectionPoint] {
         let calendar = Calendar.current
         let today = Date()
+        let todayStart = calendar.startOfDay(for: today)
         var points: [ProjectionPoint] = []
 
-        var cashBalance = totalBankBalance
+        var cashBalance = totalBankBalance - transactionDelta(after: todayStart)
         var securitiesValue = totalSecuritiesValue
+        let recurringIncome = projectedRecurringIncome(fallbackMonthlyIncome: monthlyIncome)
+        let variableDailyDelta = averageDailyVariableTransactionDelta()
 
         for dayOffset in 0..<91 {
             guard let date = calendar.date(byAdding: .day, value: dayOffset, to: today) else { continue }
+            let dateStart = calendar.startOfDay(for: date)
             let dayOfMonth = calendar.component(.day, from: date)
             let isFirstOfMonth = dayOfMonth == 1
             var isEvent = false
-            var eventLabel = ""
+            var eventLabels: [String] = []
+
+            if dateStart > todayStart {
+                let futureTransactions = transactions.filter { calendar.isDate($0.date, inSameDayAs: date) }
+                for transaction in futureTransactions {
+                    cashBalance += transaction.delta
+                    isEvent = true
+                    eventLabels.append(transaction.category.rawValue)
+                }
+
+                cashBalance += variableDailyDelta
+            }
 
             // 月初：収入入金 + 証券成長
             if isFirstOfMonth && dayOffset > 0 {
-                cashBalance += monthlyIncome
+                if recurringIncome.day == 1 {
+                    cashBalance += recurringIncome.amount
+                    eventLabels.append(recurringIncome.label)
+                }
                 securitiesValue *= (1 + securitiesGrowthRate)
                 isEvent = true
-                eventLabel = "給与入金"
+                if recurringIncome.day != 1 {
+                    eventLabels.append("証券成長")
+                }
+            }
+
+            if dayOffset > 0 && dayOfMonth == recurringIncome.day && recurringIncome.day != 1 {
+                cashBalance += recurringIncome.amount
+                isEvent = true
+                eventLabels.append(recurringIncome.label)
             }
 
             // カード引き落とし日
@@ -140,7 +196,7 @@ final class DataManager: ObservableObject {
                 if card.billingDay == dayOfMonth {
                     cashBalance -= card.nextBillingAmount
                     isEvent = true
-                    eventLabel = eventLabel.isEmpty ? card.cardName : eventLabel + "他"
+                    eventLabels.append(card.cardName)
                 }
             }
 
@@ -149,7 +205,7 @@ final class DataManager: ObservableObject {
                 if cost.billingDay == dayOfMonth {
                     cashBalance -= cost.amount
                     isEvent = true
-                    eventLabel = eventLabel.isEmpty ? cost.name : eventLabel
+                    eventLabels.append(cost.name)
                 }
             }
 
@@ -157,6 +213,8 @@ final class DataManager: ObservableObject {
             for sub in subscriptions where sub.isActive {
                 if sub.billingDay == dayOfMonth && sub.billingCycle == .monthly {
                     cashBalance -= sub.monthlyCost
+                    isEvent = true
+                    eventLabels.append(sub.name)
                 }
             }
 
@@ -165,7 +223,7 @@ final class DataManager: ObservableObject {
                 totalAssets: max(cashBalance + securitiesValue, 0),
                 cashOnly: max(cashBalance, 0),
                 isEvent: isEvent,
-                eventLabel: eventLabel
+                eventLabel: eventLabels.prefix(2).joined(separator: " / ")
             ))
         }
 
@@ -244,8 +302,60 @@ final class DataManager: ObservableObject {
         transactions.insert(t, at: 0)
         // Reflect income/expense on bank balance (first account as default)
         guard !bankAccounts.isEmpty else { return }
-        let delta = t.type == .income ? t.amount : -t.amount
-        bankAccounts[0].balance += delta
+        bankAccounts[0].balance += t.delta
+    }
+
+    func transactions(on date: Date) -> [Transaction] {
+        transactions.filter { Calendar.current.isDate($0.date, inSameDayAs: date) }
+    }
+
+    func transactionTotals(in month: Date) -> (income: Double, expense: Double) {
+        let calendar = Calendar.current
+        return transactions.reduce(into: (income: 0.0, expense: 0.0)) { totals, transaction in
+            guard calendar.isDate(transaction.date, equalTo: month, toGranularity: .month) else { return }
+            switch transaction.type {
+            case .income:
+                totals.income += transaction.amount
+            case .expense:
+                totals.expense += transaction.amount
+            }
+        }
+    }
+
+    func transactionDelta(after date: Date) -> Double {
+        transactions
+            .filter { Calendar.current.startOfDay(for: $0.date) > date }
+            .reduce(0) { $0 + $1.delta }
+    }
+
+    private func projectedRecurringIncome(fallbackMonthlyIncome: Double) -> (day: Int, amount: Double, label: String) {
+        let salaryTransactions = transactions
+            .filter { $0.type == .income && ($0.category == .salary || $0.category == .bonus) }
+            .sorted { $0.date > $1.date }
+
+        guard let latestSalary = salaryTransactions.first else {
+            return (1, fallbackMonthlyIncome, "給与入金")
+        }
+
+        let day = Calendar.current.component(.day, from: latestSalary.date)
+        return (min(max(day, 1), 28), latestSalary.amount, latestSalary.category.rawValue)
+    }
+
+    private func averageDailyVariableTransactionDelta() -> Double {
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: Date())
+        guard let start = calendar.date(byAdding: .day, value: -90, to: today) else { return 0 }
+
+        let variableTransactions = transactions.filter { transaction in
+            let day = calendar.startOfDay(for: transaction.date)
+            let isRecurringIncome = transaction.type == .income &&
+                (transaction.category == .salary || transaction.category == .bonus)
+            return day >= start && day < today && !isRecurringIncome
+        }
+
+        guard !variableTransactions.isEmpty else { return 0 }
+        let totalDelta = variableTransactions.reduce(0) { $0 + $1.delta }
+        return totalDelta / 90.0
     }
 
     // ─────────────────────────────────────────
@@ -266,5 +376,11 @@ final class DataManager: ObservableObject {
             guard total > 0 else { return nil }
             return (cat, total)
         }
+    }
+}
+
+extension Transaction {
+    var delta: Double {
+        type == .income ? amount : -amount
     }
 }

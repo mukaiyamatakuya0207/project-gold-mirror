@@ -160,6 +160,9 @@ struct DayFinancialSnapshot {
     // その日に予定されている支出
     var scheduledExpenses: [ScheduledExpense]
 
+    // その日に予定されている収入
+    var scheduledIncomes: [ScheduledIncome] = []
+
     // その日の予測純資産
     var projectedNetAssets: Double
 
@@ -170,7 +173,17 @@ struct DayFinancialSnapshot {
         scheduledExpenses.reduce(0) { $0 + $1.amount }
     }
 
+    var totalIncomes: Double {
+        scheduledIncomes.reduce(0) { $0 + $1.amount }
+    }
+
+    var netCashflow: Double {
+        totalIncomes - totalExpenses
+    }
+
     var hasExpenses: Bool { !scheduledExpenses.isEmpty }
+    var hasIncomes: Bool { !scheduledIncomes.isEmpty }
+    var hasEvents: Bool { hasExpenses || hasIncomes }
 }
 
 struct ScheduledExpense: Identifiable {
@@ -185,5 +198,22 @@ struct ScheduledExpense: Identifiable {
         case creditCard  = "クレジットカード"
         case fixedCost   = "固定費"
         case subscription = "サブスク"
+        case transaction  = "支出"
+    }
+}
+
+struct ScheduledIncome: Identifiable {
+    let id = UUID()
+    let name: String
+    let amount: Double
+    let category: IncomeCategory
+    let icon: String
+    let color: Color
+
+    enum IncomeCategory: String {
+        case salary      = "給与"
+        case bonus       = "ボーナス"
+        case investment  = "投資収益"
+        case transaction = "収入"
     }
 }

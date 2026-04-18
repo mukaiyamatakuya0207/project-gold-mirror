@@ -131,7 +131,7 @@ struct AnalysisSegmentedControl: View {
 // MARK: Monthly Report Section
 // ─────────────────────────────────────────
 struct MonthlyReportSection: View {
-    @EnvironmentObject var vm: AssetViewModel
+    @EnvironmentObject var dm: DataManager
 
     var body: some View {
         VStack(spacing: GMSpacing.md) {
@@ -139,16 +139,16 @@ struct MonthlyReportSection: View {
             HStack(spacing: GMSpacing.sm) {
                 KPICard(
                     title: "純資産",
-                    value: vm.netWorth.jpyCompact,
-                    change: "+¥340K",
+                    value: dm.netWorth.jpyCompact,
+                    change: "±¥0",
                     isPositive: true,
                     icon: "dollarsign.circle.fill"
                 )
                 KPICard(
                     title: "証券評価額",
-                    value: vm.totalSecuritiesValue.jpyCompact,
-                    change: vm.totalSecuritiesProfitLossRate.signedPercent,
-                    isPositive: vm.totalSecuritiesProfitLoss >= 0,
+                    value: dm.totalSecuritiesValue.jpyCompact,
+                    change: dm.totalSecuritiesProfitLossRate.signedPercent,
+                    isPositive: dm.totalSecuritiesProfitLoss >= 0,
                     icon: "chart.line.uptrend.xyaxis"
                 )
             }
@@ -158,15 +158,15 @@ struct MonthlyReportSection: View {
             HStack(spacing: GMSpacing.sm) {
                 KPICard(
                     title: "現金残高",
-                    value: vm.totalBankBalance.jpyCompact,
-                    change: "+¥120K",
+                    value: dm.totalBankBalance.jpyCompact,
+                    change: "±¥0",
                     isPositive: true,
                     icon: "banknote.fill"
                 )
                 KPICard(
                     title: "今月支出",
-                    value: vm.totalMonthlyBilling.jpyCompact,
-                    change: "-¥18K vs 先月",
+                    value: (dm.totalMonthlyOutflow + dm.currentMonthTransactionExpense).jpyCompact,
+                    change: "±¥0 vs 先月",
                     isPositive: true,
                     icon: "creditcard.fill"
                 )

@@ -126,6 +126,7 @@ struct WealthCalendarView: View {
 
             // Legend
             HStack(spacing: GMSpacing.md) {
+                CalLegendItem(color: .gmPositive, label: "収入")
                 CalLegendItem(color: .gmNegative,  label: "大きな支出")
                 CalLegendItem(color: .gmGold,      label: "カード引き落とし")
                 CalLegendItem(color: Color(hex: "#CE93D8"), label: "サブスク")
@@ -180,12 +181,17 @@ struct MonthlyOutflowBanner: View {
             VStack(alignment: .leading, spacing: GMSpacing.xs) {
                 Text("今月の予定支出合計")
                     .font(GMFont.caption(11)).foregroundStyle(Color.gmTextTertiary)
-                Text(dm.totalMonthlyOutflow.jpyFormatted)
+                Text((dm.totalMonthlyOutflow + dm.currentMonthTransactionExpense).jpyFormatted)
                     .font(GMFont.display(26, weight: .bold))
                     .foregroundStyle(GMGradient.goldHorizontal)
             }
             Spacer()
             VStack(alignment: .trailing, spacing: GMSpacing.xs) {
+                HStack(spacing: 4) {
+                    Circle().fill(Color.gmPositive).frame(width: 7, height: 7)
+                    Text("収入 \(dm.currentMonthTransactionIncome.jpyCompact)")
+                        .font(GMFont.caption(10)).foregroundStyle(Color.gmTextTertiary)
+                }
                 HStack(spacing: 4) {
                     Circle().fill(Color.gmGold).frame(width: 7, height: 7)
                     Text("カード \(dm.totalMonthlyCardBilling.jpyCompact)")
@@ -226,6 +232,7 @@ struct WealthCalendarDayCell: View {
     let onTap: () -> Void
 
     private var dotColor: Color {
+        if snapshot.totalIncomes > 0 && snapshot.totalExpenses == 0 { return .gmPositive }
         let total = snapshot.totalExpenses
         if total > 100_000  { return .gmNegative }
         if total > 0        { return .gmGold }
@@ -259,13 +266,16 @@ struct WealthCalendarDayCell: View {
 
                 // Dot row
                 HStack(spacing: 2) {
+                    if snapshot.hasIncomes {
+                        Circle().fill(Color.gmPositive).frame(width: 4, height: 4)
+                    }
                     if snapshot.hasExpenses {
                         Circle().fill(dotColor).frame(width: 4, height: 4)
                     }
                     if let sc = subDotColor {
                         Circle().fill(sc).frame(width: 4, height: 4)
                     }
-                    if !snapshot.hasExpenses { Color.clear.frame(width: 4, height: 4) }
+                    if !snapshot.hasEvents { Color.clear.frame(width: 4, height: 4) }
                 }
                 .frame(height: 5)
             }
@@ -295,21 +305,53 @@ struct DayDetailPopup: View {
                     Text(dateStr)
                         .font(GMFont.heading(16, weight: .bold))
                         .foregroundStyle(Color.gmTextPrimary)
-                    Text(snapshot.hasExpenses ? "支出予定あり" : "支出予定なし")
+                    Text(snapshot.hasEvents ? "収支イベントあり" : "収支予定なし")
                         .font(GMFont.caption(11))
-                        .foregroundStyle(snapshot.hasExpenses ? Color.gmNegative : Color.gmPositive)
+                        .foregroundStyle(snapshot.netCashflow >= 0 ? Color.gmPositive : Color.gmNegative)
                 }
                 Spacer()
-                // Total expenses badge
-                if snapshot.hasExpenses {
+                if snapshot.hasEvents {
                     VStack(alignment: .trailing, spacing: 2) {
-                        Text("支出合計")
+                        Text("日次収支")
                             .font(GMFont.caption(10))
                             .foregroundStyle(Color.gmTextTertiary)
-                        Text(snapshot.totalExpenses.jpyFormatted)
+                        Text(snapshot.netCashflow.jpyFormatted)
                             .font(GMFont.mono(16, weight: .bold))
-                            .foregroundStyle(Color.gmNegative)
+                            .foregroundStyle(snapshot.netCashflow >= 0 ? Color.gmPositive : Color.gmNegative)
                     }
+                }
+            }
+
+            // ─── Income List ───
+            if snapshot.hasIncomes {
+                VStack(spacing: GMSpacing.xs) {
+                    ForEach(snapshot.scheduledIncomes) { income in
+                        HStack(spacing: GMSpacing.sm) {
+                            ZStack {
+                                RoundedRectangle(cornerRadius: 6)
+                                    .fill(income.color.opacity(0.15))
+                                    .frame(width: 32, height: 32)
+                                Image(systemName: income.icon)
+                                    .font(.system(size: 14))
+                                    .foregroundStyle(income.color)
+                            }
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(income.name)
+                                    .font(GMFont.body(13, weight: .medium))
+                                    .foregroundStyle(Color.gmTextPrimary)
+                                Text(income.category.rawValue)
+                                    .font(GMFont.caption(10))
+                                    .foregroundStyle(Color.gmTextTertiary)
+                            }
+                            Spacer()
+                            Text("+\(income.amount.jpyFormatted)")
+                                .font(GMFont.mono(14, weight: .bold))
+                                .foregroundStyle(income.color)
+                        }
+                    }
+                }
+                if snapshot.hasExpenses {
+                    Divider().background(Color.gmGoldDim.opacity(0.4))
                 }
             }
 
@@ -335,9 +377,9 @@ struct DayDetailPopup: View {
                                     .foregroundStyle(Color.gmTextTertiary)
                             }
                             Spacer()
-                            Text(expense.amount.jpyFormatted)
+                            Text("-\(expense.amount.jpyFormatted)")
                                 .font(GMFont.mono(14, weight: .bold))
-                                .foregroundStyle(Color.gmTextPrimary)
+                                .foregroundStyle(Color.gmNegative)
                         }
                     }
                 }
@@ -390,8 +432,8 @@ struct MonthCashflowSummary: View {
     private var events: [(day: Int, total: Double)] {
         (1...31).compactMap { day -> (Int, Double)? in
             let snap = dm.daySnapshot(day: day, month: month)
-            guard snap.hasExpenses else { return nil }
-            return (day, snap.totalExpenses)
+            guard snap.hasEvents else { return nil }
+            return (day, snap.netCashflow)
         }
         .sorted { $0.day < $1.day }
     }
@@ -401,7 +443,7 @@ struct MonthCashflowSummary: View {
             HStack {
                 Image(systemName: "list.bullet.rectangle.fill")
                     .foregroundStyle(Color.gmGold)
-                Text("今月の支払いスケジュール")
+                Text("今月の収支スケジュール")
                     .font(GMFont.heading(15, weight: .semibold))
                     .foregroundStyle(Color.gmTextPrimary)
             }
@@ -418,18 +460,24 @@ struct MonthCashflowSummary: View {
                         .font(GMFont.caption(11)).foregroundStyle(Color.gmTextTertiary)
                     let snap = dm.daySnapshot(day: event.day, month: month)
                     VStack(alignment: .leading, spacing: 2) {
+                        ForEach(snap.scheduledIncomes.prefix(1)) { income in
+                            Text(income.name).font(GMFont.caption(11))
+                                .foregroundStyle(Color.gmPositive).lineLimit(1)
+                        }
                         ForEach(snap.scheduledExpenses.prefix(2)) { exp in
                             Text(exp.name).font(GMFont.caption(11))
                                 .foregroundStyle(Color.gmTextSecondary).lineLimit(1)
                         }
-                        if snap.scheduledExpenses.count > 2 {
-                            Text("他\(snap.scheduledExpenses.count - 2)件")
+                        let eventCount = snap.scheduledIncomes.count + snap.scheduledExpenses.count
+                        if eventCount > 3 {
+                            Text("他\(eventCount - 3)件")
                                 .font(GMFont.caption(10)).foregroundStyle(Color.gmTextTertiary)
                         }
                     }
                     Spacer()
                     Text(event.total.jpyFormatted)
-                        .font(GMFont.mono(13, weight: .bold)).foregroundStyle(Color.gmTextPrimary)
+                        .font(GMFont.mono(13, weight: .bold))
+                        .foregroundStyle(event.total >= 0 ? Color.gmPositive : Color.gmNegative)
                 }
                 .padding(.vertical, GMSpacing.xs)
                 if event.day != events.last?.day {
@@ -449,10 +497,12 @@ extension DataManager {
     /// 指定した日付の財務スナップショットを生成
     func daySnapshot(day: Int, month: Date) -> DayFinancialSnapshot {
         var expenses: [ScheduledExpense] = []
+        var incomes: [ScheduledIncome] = []
         let cal = Calendar.current
         var comps = cal.dateComponents([.year, .month], from: month)
         comps.day = day
         let date = cal.date(from: comps) ?? month
+        let dateStart = cal.startOfDay(for: date)
 
         // カード
         for card in creditCards where card.billingDay == day {
@@ -485,6 +535,27 @@ extension DataManager {
             ))
         }
 
+        for transaction in transactions(on: date) {
+            switch transaction.type {
+            case .income:
+                incomes.append(ScheduledIncome(
+                    name: transaction.memo.isEmpty ? transaction.category.rawValue : transaction.memo,
+                    amount: transaction.amount,
+                    category: incomeCategory(for: transaction.category),
+                    icon: transaction.category.icon,
+                    color: Color.gmPositive
+                ))
+            case .expense:
+                expenses.append(ScheduledExpense(
+                    name: transaction.memo.isEmpty ? transaction.category.rawValue : transaction.memo,
+                    amount: transaction.amount,
+                    category: .transaction,
+                    icon: transaction.category.icon,
+                    color: transaction.category.color
+                ))
+            }
+        }
+
         // その日までに発生する累積支出を計算
         let cumulativeExpenses = (1...max(day,1)).reduce(0.0) { sum, d in
             let dCards = creditCards.filter { $0.billingDay == d }.reduce(0) { $0 + $1.nextBillingAmount }
@@ -493,16 +564,30 @@ extension DataManager {
             return sum + dCards + dFixed + dSub
         }
 
-        let projectedCash   = max(totalBankBalance - cumulativeExpenses, 0)
+        let projectedCash   = max(totalBankBalance - transactionDelta(after: dateStart) - cumulativeExpenses, 0)
         let projectedAssets = max(projectedCash + totalSecuritiesValue, 0)
 
         return DayFinancialSnapshot(
             date: date,
             dayOfMonth: day,
             scheduledExpenses: expenses,
+            scheduledIncomes: incomes,
             projectedNetAssets: projectedAssets,
             projectedCash: projectedCash
         )
+    }
+
+    private func incomeCategory(for category: TransactionCategory) -> ScheduledIncome.IncomeCategory {
+        switch category {
+        case .salary:
+            return .salary
+        case .bonus:
+            return .bonus
+        case .investment:
+            return .investment
+        default:
+            return .transaction
+        }
     }
 }
 

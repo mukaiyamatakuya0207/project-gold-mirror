@@ -6,7 +6,7 @@ import Charts
 
 struct ProjectionView: View {
     @EnvironmentObject var dm: DataManager
-    @State private var monthlyIncome: Double = 450_000
+    @State private var monthlyIncome: Double = 0
     @State private var showSettings = false
     @State private var selectedPoint: ProjectionPoint? = nil
 
@@ -147,10 +147,10 @@ struct ProjectionSummaryRow: View {
                         .font(GMFont.caption(11))
                         .foregroundStyle(Color.gmTextTertiary)
                 }
-                Text(dm.totalMonthlyOutflow.jpyCompact)
+                Text((dm.totalMonthlyOutflow + dm.currentMonthTransactionExpense).jpyCompact)
                     .font(GMFont.mono(20, weight: .bold))
                     .foregroundStyle(Color.gmTextPrimary)
-                Text("収入比 \(Int((dm.totalMonthlyOutflow / monthlyIncome) * 100))%")
+                Text("収入比 \(Int(((dm.totalMonthlyOutflow + dm.currentMonthTransactionExpense) / max(monthlyIncome, 1)) * 100))%")
                     .font(GMFont.caption(11))
                     .foregroundStyle(Color.gmTextTertiary)
             }
@@ -367,10 +367,13 @@ struct OutflowBreakdownCard: View {
                         color: Color(hex: "#4FC3F7"), icon: "house.fill"),
             OutflowItem(label: "サブスク",         amount: dm.totalMonthlySubscriptions,
                         color: Color(hex: "#CE93D8"), icon: "play.rectangle.fill"),
+            OutflowItem(label: "手入力支出",       amount: dm.currentMonthTransactionExpense,
+                        color: .gmNegative, icon: "pencil.and.list.clipboard"),
         ]
+        .filter { $0.amount > 0 }
     }
 
-    private var total: Double { dm.totalMonthlyOutflow }
+    private var total: Double { dm.totalMonthlyOutflow + dm.currentMonthTransactionExpense }
 
     var body: some View {
         VStack(alignment: .leading, spacing: GMSpacing.md) {
@@ -446,7 +449,7 @@ struct ProjectionSettingsSheet: View {
                             Text("月収（手取り）")
                                 .foregroundStyle(Color.gmTextPrimary)
                             Spacer()
-                            TextField("450000", text: $incomeText)
+                            TextField("0", text: $incomeText)
                                 .keyboardType(.numberPad)
                                 .multilineTextAlignment(.trailing)
                                 .foregroundStyle(Color.gmGold)

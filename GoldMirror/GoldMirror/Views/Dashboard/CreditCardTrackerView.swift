@@ -9,77 +9,76 @@ struct CreditCardTrackerView: View {
     @State private var editingCard: CreditCard? = nil
 
     var body: some View {
-        NavigationStack {
-            ZStack {
-                Color.gmBackground.ignoresSafeArea()
+        ZStack {
+            Color.gmBackground.ignoresSafeArea()
 
-                ScrollView(showsIndicators: false) {
-                    VStack(spacing: GMSpacing.lg) {
+            ScrollView(showsIndicators: false) {
+                VStack(spacing: GMSpacing.lg) {
 
-                        // ── Next Billing Banner ──
-                        if let summary = dm.nextBillingSummary {
-                            NextBillingBanner(summary: summary)
-                                .padding(.horizontal, GMSpacing.md)
-                        }
-
-                        // ── Total Summary ──
-                        CardBillingSummaryCard()
+                    // ── Next Billing Banner ──
+                    if let summary = dm.nextBillingSummary {
+                        NextBillingBanner(summary: summary)
                             .padding(.horizontal, GMSpacing.md)
-
-                        // ── Card List ──
-                        VStack(spacing: GMSpacing.sm) {
-                            HStack {
-                                Image(systemName: "creditcard.fill")
-                                    .foregroundStyle(Color.gmGold)
-                                Text("登録カード")
-                                    .font(GMFont.heading(15, weight: .semibold))
-                                    .foregroundStyle(Color.gmTextPrimary)
-                                Spacer()
-                                Button {
-                                    showAddSheet = true
-                                } label: {
-                                    HStack(spacing: 4) {
-                                        Image(systemName: "plus")
-                                            .font(.system(size: 12, weight: .bold))
-                                        Text("追加")
-                                            .font(GMFont.caption(12, weight: .semibold))
-                                    }
-                                    .foregroundStyle(Color.black)
-                                    .padding(.horizontal, GMSpacing.sm)
-                                    .padding(.vertical, 6)
-                                    .background(GMGradient.goldHorizontal)
-                                    .clipShape(Capsule())
-                                }
-                            }
-                            .padding(.horizontal, GMSpacing.md)
-
-                            ForEach(dm.creditCards) { card in
-                                CreditCardDetailRow(card: card) {
-                                    editingCard = card
-                                }
-                                .padding(.horizontal, GMSpacing.md)
-                            }
-                        }
-
-                        // ── Billing Calendar Preview ──
-                        BillingDayHeatmap()
-                            .padding(.horizontal, GMSpacing.md)
-
-                        Spacer().frame(height: 100)
                     }
-                    .padding(.top, GMSpacing.md)
+
+                    // ── Total Summary ──
+                    CardBillingSummaryCard()
+                        .padding(.horizontal, GMSpacing.md)
+
+                    // ── Card List ──
+                    VStack(spacing: GMSpacing.sm) {
+                        HStack {
+                            Image(systemName: "creditcard.fill")
+                                .foregroundStyle(Color.gmGold)
+                            Text("登録カード")
+                                .font(GMFont.heading(15, weight: .semibold))
+                                .foregroundStyle(Color.gmTextPrimary)
+                            Spacer()
+                            Button {
+                                showAddSheet = true
+                            } label: {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "plus")
+                                        .font(.system(size: 12, weight: .bold))
+                                    Text("追加")
+                                        .font(GMFont.caption(12, weight: .semibold))
+                                }
+                                .foregroundStyle(Color.black)
+                                .padding(.horizontal, GMSpacing.sm)
+                                .padding(.vertical, 6)
+                                .background(GMGradient.goldHorizontal)
+                                .clipShape(Capsule())
+                            }
+                        }
+                        .padding(.horizontal, GMSpacing.md)
+
+                        ForEach(dm.creditCards) { card in
+                            CreditCardDetailRow(card: card) {
+                                editingCard = card
+                            }
+                            .padding(.horizontal, GMSpacing.md)
+                        }
+                    }
+
+                    // ── Billing Calendar Preview ──
+                    BillingDayHeatmap()
+                        .padding(.horizontal, GMSpacing.md)
+
+                    Spacer().frame(height: 100)
                 }
+                .padding(.top, GMSpacing.md)
             }
-            .navigationBarHidden(true)
-            .sheet(isPresented: $showAddSheet) {
-                CreditCardFormSheet(card: nil) { newCard in
-                    dm.addCreditCard(newCard)
-                }
+        }
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbarBackground(Color.gmBackground, for: .navigationBar)
+        .sheet(isPresented: $showAddSheet) {
+            CreditCardFormSheet(card: nil) { newCard in
+                dm.addCreditCard(newCard)
             }
-            .sheet(item: $editingCard) { card in
-                CreditCardFormSheet(card: card) { updated in
-                    dm.updateCreditCard(updated)
-                }
+        }
+        .sheet(item: $editingCard) { card in
+            CreditCardFormSheet(card: card) { updated in
+                dm.updateCreditCard(updated)
             }
         }
     }
@@ -379,7 +378,7 @@ struct CreditCardFormSheet: View {
     @State private var issuerName: String = ""
     @State private var billingDayText: String = "27"
     @State private var nextBillingText: String = ""
-    @State private var creditLimitText: String = "1000000"
+    @State private var creditLimitText: String = ""
     @State private var cardLastFour: String = ""
 
     var isEditing: Bool { card != nil }
@@ -391,8 +390,8 @@ struct CreditCardFormSheet: View {
 
                 Form {
                     Section {
-                        GMFormField(label: "カード名", placeholder: "楽天カード Platinum", text: $cardName)
-                        GMFormField(label: "発行会社", placeholder: "楽天カード株式会社", text: $issuerName)
+                        GMFormField(label: "カード名", placeholder: "カード名", text: $cardName)
+                        GMFormField(label: "発行会社", placeholder: "発行会社", text: $issuerName)
                         GMFormField(label: "カード末尾4桁", placeholder: "1234", text: $cardLastFour)
                             .keyboardType(.numberPad)
                     } header: {
@@ -402,9 +401,9 @@ struct CreditCardFormSheet: View {
                     Section {
                         GMFormField(label: "引き落とし日", placeholder: "27", text: $billingDayText)
                             .keyboardType(.numberPad)
-                        GMFormField(label: "今月の請求額（円）", placeholder: "128400", text: $nextBillingText)
+                        GMFormField(label: "今月の請求額（円）", placeholder: "0", text: $nextBillingText)
                             .keyboardType(.numberPad)
-                        GMFormField(label: "限度額（円）", placeholder: "1000000", text: $creditLimitText)
+                        GMFormField(label: "限度額（円）", placeholder: "0", text: $creditLimitText)
                             .keyboardType(.numberPad)
                     } header: {
                         Text("請求情報").font(GMFont.caption(12)).foregroundStyle(Color.gmGold)
@@ -449,7 +448,7 @@ struct CreditCardFormSheet: View {
             issuerName: issuerName,
             billingDay: Int(billingDayText) ?? 27,
             nextBillingAmount: Double(nextBillingText) ?? 0,
-            creditLimit: Double(creditLimitText) ?? 1_000_000,
+            creditLimit: Double(creditLimitText) ?? 0,
             currentUsage: Double(nextBillingText) ?? 0,
             cardLastFour: cardLastFour.isEmpty ? "****" : cardLastFour
         )
