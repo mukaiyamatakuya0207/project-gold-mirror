@@ -55,7 +55,7 @@ struct MirrorView: View {
                             .padding(.bottom, GMSpacing.md)
                     }
 
-                    Spacer().frame(height: 100)
+                    Spacer().frame(height: 120)
                 }
                 .padding(.top, GMSpacing.md)
             }
@@ -80,10 +80,11 @@ struct MirrorView: View {
                         }
                     }
                     .padding(.trailing, GMSpacing.lg)
-                    .padding(.bottom, 90) // above tab bar
+                    .padding(.bottom, 100) // above tab bar + FAB clearance
                 }
             }
         }
+        .toolbar(.hidden, for: .navigationBar)
         .sheet(isPresented: $showCompose) {
             ComposePostView()
                 .environmentObject(ocrVM)

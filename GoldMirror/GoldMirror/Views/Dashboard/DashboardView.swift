@@ -3,6 +3,16 @@
 
 import SwiftUI
 
+// ─────────────────────────────────────────
+// MARK: Navigation Destination Tag
+// ─────────────────────────────────────────
+enum DashboardDestination: Hashable {
+    case cardTracker, fixedCost, projection
+}
+
+// ─────────────────────────────────────────
+// MARK: DashboardView
+// ─────────────────────────────────────────
 struct DashboardView: View {
     @EnvironmentObject var vm: AssetViewModel
     @EnvironmentObject var dm: DataManager
@@ -16,107 +26,96 @@ struct DashboardView: View {
 
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 0) {
-                    // 1. Hero Header – edge-to-edge, status bar covered
+                    // 1. Custom Hero Header (covers status bar)
                     DashboardHeaderView(showNotifications: $showNotifications)
 
-                    VStack(spacing: 0) {
-                        // 2. Net Worth Summary Card
-                        NetWorthSummaryCard()
-                            .padding(.horizontal, GMSpacing.md)
-                            .padding(.top, GMSpacing.lg)
-                            .padding(.bottom, GMSpacing.lg)
-
-                        // 2.5 Next Billing Countdown Banner
-                        if let summary = dm.nextBillingSummary {
-                            NavigationLink {
-                                CreditCardTrackerView()
-                                    .environmentObject(dm)
-                                    .environmentObject(vm)
-                            } label: {
-                                NextBillingCountdownBanner(summary: summary)
-                            }
-                            .buttonStyle(.plain)
-                            .padding(.horizontal, GMSpacing.md)
-                            .padding(.bottom, GMSpacing.lg)
-                        }
-
-                        // 3. Asset Allocation Bar
-                        AssetAllocationBar()
-                            .padding(.horizontal, GMSpacing.md)
-                            .padding(.bottom, GMSpacing.lg)
-
-                        // 4. Bank Accounts Section
-                        SectionHeader(
-                            title: "現金・預金",
-                            icon: "building.columns.fill",
-                            accentColor: .gmGold,
-                            action: { withAnimation { showAllBankAccounts.toggle() } }
-                        )
+                    // 2. Net Worth Summary Card
+                    NetWorthSummaryCard()
                         .padding(.horizontal, GMSpacing.md)
-                        .padding(.bottom, GMSpacing.sm)
+                        .padding(.top, GMSpacing.lg)
+                        .padding(.bottom, GMSpacing.lg)
 
-                        ForEach(showAllBankAccounts ? vm.bankAccounts : Array(vm.bankAccounts.prefix(2))) { account in
-                            BankAccountRow(account: account)
-                                .padding(.horizontal, GMSpacing.md)
-                                .padding(.bottom, GMSpacing.sm)
-                                .transition(.move(edge: .top).combined(with: .opacity))
+                    // 3. Next Billing Countdown Banner
+                    if let summary = dm.nextBillingSummary {
+                        NavigationLink(value: DashboardDestination.cardTracker) {
+                            NextBillingCountdownBanner(summary: summary)
                         }
-
-                        // 5. Securities Section
-                        SectionHeader(
-                            title: "証券・投資",
-                            icon: "chart.line.uptrend.xyaxis",
-                            accentColor: .gmGold,
-                            action: { withAnimation { showAllSecurities.toggle() } }
-                        )
+                        .buttonStyle(.plain)
                         .padding(.horizontal, GMSpacing.md)
-                        .padding(.top, GMSpacing.md)
-                        .padding(.bottom, GMSpacing.sm)
+                        .padding(.bottom, GMSpacing.lg)
+                    }
 
-                        ForEach(showAllSecurities ? vm.securitiesAccounts : Array(vm.securitiesAccounts.prefix(2))) { account in
-                            SecuritiesAccountRow(account: account)
-                                .padding(.horizontal, GMSpacing.md)
-                                .padding(.bottom, GMSpacing.sm)
-                                .transition(.move(edge: .top).combined(with: .opacity))
-                        }
-
-                        // 6. Credit Card Section
-                        SectionHeader(
-                            title: "今月の引き落とし",
-                            icon: "creditcard.fill",
-                            accentColor: .gmGold,
-                            action: {}
-                        )
+                    // 4. Asset Allocation Bar
+                    AssetAllocationBar()
                         .padding(.horizontal, GMSpacing.md)
-                        .padding(.top, GMSpacing.md)
-                        .padding(.bottom, GMSpacing.sm)
+                        .padding(.bottom, GMSpacing.lg)
 
-                        CreditCardSummaryCard()
+                    // 5. Bank Accounts Section
+                    SectionHeader(
+                        title: "現金・預金",
+                        icon: "building.columns.fill",
+                        accentColor: .gmGold
+                    ) { withAnimation { showAllBankAccounts.toggle() } }
+                    .padding(.horizontal, GMSpacing.md)
+                    .padding(.bottom, GMSpacing.sm)
+
+                    ForEach(showAllBankAccounts ? vm.bankAccounts : Array(vm.bankAccounts.prefix(2))) { acct in
+                        BankAccountRow(account: acct)
                             .padding(.horizontal, GMSpacing.md)
                             .padding(.bottom, GMSpacing.sm)
-
-                        ForEach(vm.creditCards.prefix(2)) { card in
-                            CreditCardRow(card: card)
-                                .padding(.horizontal, GMSpacing.md)
-                                .padding(.bottom, GMSpacing.sm)
-                        }
-
-                        // 7. Quick Action Buttons
-                        DashboardQuickActions()
-                            .padding(.horizontal, GMSpacing.md)
-                            .padding(.top, GMSpacing.md)
-
-                        // Bottom padding – clears FAB + tab bar
-                        Spacer().frame(height: 110)
+                            .transition(.move(edge: .top).combined(with: .opacity))
                     }
+
+                    // 6. Securities Section
+                    SectionHeader(
+                        title: "証券・投資",
+                        icon: "chart.line.uptrend.xyaxis",
+                        accentColor: .gmGold
+                    ) { withAnimation { showAllSecurities.toggle() } }
+                    .padding(.horizontal, GMSpacing.md)
+                    .padding(.top, GMSpacing.md)
+                    .padding(.bottom, GMSpacing.sm)
+
+                    ForEach(showAllSecurities ? vm.securitiesAccounts : Array(vm.securitiesAccounts.prefix(2))) { acct in
+                        SecuritiesAccountRow(account: acct)
+                            .padding(.horizontal, GMSpacing.md)
+                            .padding(.bottom, GMSpacing.sm)
+                            .transition(.move(edge: .top).combined(with: .opacity))
+                    }
+
+                    // 7. Credit Card Section
+                    SectionHeader(
+                        title: "今月の引き落とし",
+                        icon: "creditcard.fill",
+                        accentColor: .gmGold
+                    ) { }
+                    .padding(.horizontal, GMSpacing.md)
+                    .padding(.top, GMSpacing.md)
+                    .padding(.bottom, GMSpacing.sm)
+
+                    CreditCardSummaryCard()
+                        .padding(.horizontal, GMSpacing.md)
+                        .padding(.bottom, GMSpacing.sm)
+
+                    ForEach(vm.creditCards.prefix(2)) { card in
+                        CreditCardRow(card: card)
+                            .padding(.horizontal, GMSpacing.md)
+                            .padding(.bottom, GMSpacing.sm)
+                    }
+
+                    // 8. Quick Actions
+                    DashboardQuickActions()
+                        .padding(.horizontal, GMSpacing.md)
+                        .padding(.top, GMSpacing.md)
+
+                    // Bottom clearance: tab bar (82) + FAB overhang (28) + margin
+                    Spacer().frame(height: 120)
                 }
             }
         }
-        .navigationBarHidden(true)
-        .sheet(isPresented: $showNotifications) {
-            NotificationHistoryView()
-        }
-        // Sub-screen navigation destinations (inside parent NavigationStack)
+        // ── Hide system navigation bar completely ──
+        .toolbar(.hidden, for: .navigationBar)
+        // ── Sub-screen navigation ──
         .navigationDestination(for: DashboardDestination.self) { dest in
             switch dest {
             case .cardTracker:
@@ -131,11 +130,11 @@ struct DashboardView: View {
                     .environmentObject(dm)
             }
         }
+        // ── Notification sheet ──
+        .sheet(isPresented: $showNotifications) {
+            NotificationHistoryView()
+        }
     }
-}
-
-enum DashboardDestination: Hashable {
-    case cardTracker, fixedCost, projection
 }
 
 // ─────────────────────────────────────────
@@ -144,7 +143,7 @@ enum DashboardDestination: Hashable {
 struct DashboardHeaderView: View {
     @Binding var showNotifications: Bool
 
-    private var greetingText: String {
+    private var greeting: String {
         let h = Calendar.current.component(.hour, from: Date())
         switch h {
         case 5..<12:  return "Good Morning"
@@ -154,52 +153,46 @@ struct DashboardHeaderView: View {
         }
     }
 
-    private var dateString: String {
-        let fmt = DateFormatter()
-        fmt.locale = Locale(identifier: "ja_JP")
-        fmt.dateFormat = "yyyy年M月d日 (E)"
-        return fmt.string(from: Date())
+    private var dateStr: String {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "ja_JP")
+        f.dateFormat = "yyyy年M月d日 (E)"
+        return f.string(from: Date())
     }
 
     var body: some View {
         ZStack(alignment: .bottomLeading) {
-            // Full-bleed gradient background
+            // Full-bleed gradient (covers status bar)
             LinearGradient(
                 colors: [Color(hex: "#0F0D03"), Color.gmBackground],
-                startPoint: .top,
-                endPoint: .bottom
+                startPoint: .top, endPoint: .bottom
             )
             .ignoresSafeArea(edges: .top)
 
-            // Decorative gold orb
+            // Gold orb glow
             Circle()
                 .fill(RadialGradient(
-                    colors: [Color.gmGold.opacity(0.22), Color.clear],
-                    center: .center,
-                    startRadius: 0,
-                    endRadius: 130
+                    colors: [Color.gmGold.opacity(0.2), Color.clear],
+                    center: .center, startRadius: 0, endRadius: 130
                 ))
                 .frame(width: 260, height: 260)
                 .offset(x: -70, y: -30)
-                .blur(radius: 22)
+                .blur(radius: 24)
                 .allowsHitTesting(false)
 
             // Content
             VStack(alignment: .leading, spacing: GMSpacing.xs) {
-                HStack {
+                HStack(alignment: .center) {
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(greetingText)
+                        Text(greeting)
                             .font(GMFont.caption(13, weight: .medium))
                             .foregroundStyle(Color.gmGold.opacity(0.8))
-
                         Text("Gold Mirror")
                             .font(GMFont.display(30, weight: .bold))
                             .foregroundStyle(GMGradient.goldHorizontal)
                     }
-
                     Spacer()
-
-                    // Notification bell
+                    // Bell button
                     Button { showNotifications = true } label: {
                         ZStack(alignment: .topTrailing) {
                             Image(systemName: "bell.fill")
@@ -208,8 +201,7 @@ struct DashboardHeaderView: View {
                                 .frame(width: 44, height: 44)
                                 .background(Color.gmSurface)
                                 .clipShape(Circle())
-                                .overlay(Circle().stroke(Color.gmGoldDim.opacity(0.5), lineWidth: 0.5))
-
+                                .overlay(Circle().stroke(Color.gmGoldDim.opacity(0.4), lineWidth: 0.5))
                             Circle()
                                 .fill(Color.gmGold)
                                 .frame(width: 8, height: 8)
@@ -217,8 +209,7 @@ struct DashboardHeaderView: View {
                         }
                     }
                 }
-
-                Text(dateString)
+                Text(dateStr)
                     .font(GMFont.caption(12))
                     .foregroundStyle(Color.gmTextTertiary)
             }
@@ -226,6 +217,7 @@ struct DashboardHeaderView: View {
             .padding(.bottom, GMSpacing.md)
         }
         .frame(height: 140)
+        .ignoresSafeArea(edges: .top)
     }
 }
 
@@ -234,10 +226,11 @@ struct DashboardHeaderView: View {
 // ─────────────────────────────────────────
 struct NetWorthSummaryCard: View {
     @EnvironmentObject var vm: AssetViewModel
-    @State private var isAmountVisible = true
+    @State private var isVisible = true
 
     var body: some View {
         VStack(spacing: 0) {
+            // Top section
             VStack(spacing: GMSpacing.xs) {
                 HStack {
                     Text("総資産")
@@ -246,25 +239,27 @@ struct NetWorthSummaryCard: View {
                         .tracking(2)
                     Spacer()
                     Button {
-                        withAnimation(.easeInOut(duration: 0.2)) { isAmountVisible.toggle() }
+                        withAnimation(.easeInOut(duration: 0.2)) { isVisible.toggle() }
                     } label: {
-                        Image(systemName: isAmountVisible ? "eye.fill" : "eye.slash.fill")
+                        Image(systemName: isVisible ? "eye.fill" : "eye.slash.fill")
                             .font(.system(size: 14))
                             .foregroundStyle(Color.gmTextTertiary)
                     }
                 }
-
-                if isAmountVisible {
-                    Text(vm.totalAssets.jpyFormatted)
-                        .font(GMFont.display(38, weight: .bold))
-                        .foregroundStyle(GMGradient.goldHorizontal)
-                        .transition(.scale.combined(with: .opacity))
-                } else {
-                    Text("¥ ••••••••")
-                        .font(GMFont.display(38, weight: .bold))
-                        .foregroundStyle(Color.gmTextTertiary)
-                        .transition(.scale.combined(with: .opacity))
+                Group {
+                    if isVisible {
+                        Text(vm.totalAssets.jpyFormatted)
+                            .font(GMFont.display(38, weight: .bold))
+                            .foregroundStyle(GMGradient.goldHorizontal)
+                            .transition(.scale.combined(with: .opacity))
+                    } else {
+                        Text("¥ ••••••••")
+                            .font(GMFont.display(38, weight: .bold))
+                            .foregroundStyle(Color.gmTextTertiary)
+                            .transition(.scale.combined(with: .opacity))
+                    }
                 }
+                .animation(.easeInOut(duration: 0.2), value: isVisible)
             }
             .padding(GMSpacing.lg)
             .background(GMGradient.summaryCard)
@@ -276,32 +271,26 @@ struct NetWorthSummaryCard: View {
             HStack(spacing: 0) {
                 SummaryStatColumn(
                     label: "現金・預金",
-                    value: isAmountVisible ? vm.totalBankBalance.jpyCompact : "••••",
-                    icon: "banknote.fill",
-                    color: .gmGold
+                    value: isVisible ? vm.totalBankBalance.jpyCompact : "••••",
+                    icon: "banknote.fill", color: .gmGold
                 )
-
                 Divider().frame(width: 0.5)
                     .background(Color.gmGoldDim.opacity(0.4))
                     .padding(.vertical, GMSpacing.md)
-
                 SummaryStatColumn(
                     label: "証券評価額",
-                    value: isAmountVisible ? vm.totalSecuritiesValue.jpyCompact : "••••",
+                    value: isVisible ? vm.totalSecuritiesValue.jpyCompact : "••••",
                     icon: "chart.line.uptrend.xyaxis",
                     color: vm.totalSecuritiesProfitLoss >= 0 ? .gmPositive : .gmNegative,
-                    subValue: isAmountVisible ? vm.totalSecuritiesProfitLossRate.signedPercent : nil
+                    subValue: isVisible ? vm.totalSecuritiesProfitLossRate.signedPercent : nil
                 )
-
                 Divider().frame(width: 0.5)
                     .background(Color.gmGoldDim.opacity(0.4))
                     .padding(.vertical, GMSpacing.md)
-
                 SummaryStatColumn(
                     label: "今月引き落とし",
-                    value: isAmountVisible ? vm.totalMonthlyBilling.jpyCompact : "••••",
-                    icon: "arrow.up.right",
-                    color: .gmNegative
+                    value: isVisible ? vm.totalMonthlyBilling.jpyCompact : "••••",
+                    icon: "arrow.up.right", color: .gmNegative
                 )
             }
             .background(Color.gmSurface)
@@ -312,8 +301,7 @@ struct NetWorthSummaryCard: View {
                 .strokeBorder(
                     LinearGradient(
                         colors: [Color.gmGold.opacity(0.5), Color.gmGoldDim.opacity(0.2), Color.clear],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
+                        startPoint: .topLeading, endPoint: .bottomTrailing
                     ),
                     lineWidth: 0.8
                 )
@@ -334,19 +322,14 @@ struct SummaryStatColumn: View {
             Image(systemName: icon)
                 .font(.system(size: 14, weight: .semibold))
                 .foregroundStyle(color)
-
             Text(value)
                 .font(GMFont.mono(16, weight: .bold))
                 .foregroundStyle(Color.gmTextPrimary)
                 .minimumScaleFactor(0.7)
                 .lineLimit(1)
-
             if let sub = subValue {
-                Text(sub)
-                    .font(GMFont.caption(10))
-                    .foregroundStyle(color)
+                Text(sub).font(GMFont.caption(10)).foregroundStyle(color)
             }
-
             Text(label)
                 .font(GMFont.caption(10, weight: .medium))
                 .foregroundStyle(Color.gmTextTertiary)
@@ -375,13 +358,11 @@ struct AssetAllocationBar: View {
                     .font(GMFont.caption(11))
                     .foregroundStyle(Color.gmTextTertiary)
             }
-
             GeometryReader { geo in
                 HStack(spacing: 2) {
                     RoundedRectangle(cornerRadius: 4)
                         .fill(GMGradient.goldDiagonal)
                         .frame(width: max(geo.size.width * CGFloat(vm.bankRatio) - 2, 0))
-
                     RoundedRectangle(cornerRadius: 4)
                         .fill(LinearGradient(
                             colors: [Color(hex: "#1A4A2A"), Color(hex: "#2E7D4F")],
@@ -392,7 +373,6 @@ struct AssetAllocationBar: View {
                 .frame(height: 8)
             }
             .frame(height: 8)
-
             HStack {
                 LegendDot(color: .gmGold, label: "現金・預金 \(vm.totalBankBalance.jpyCompact)")
                 Spacer()
@@ -405,14 +385,11 @@ struct AssetAllocationBar: View {
 }
 
 struct LegendDot: View {
-    let color: Color
-    let label: String
+    let color: Color; let label: String
     var body: some View {
         HStack(spacing: GMSpacing.xs) {
             Circle().fill(color).frame(width: 8, height: 8)
-            Text(label)
-                .font(GMFont.caption(11))
-                .foregroundStyle(Color.gmTextSecondary)
+            Text(label).font(GMFont.caption(11)).foregroundStyle(Color.gmTextSecondary)
         }
     }
 }
@@ -451,33 +428,23 @@ struct SectionHeader: View {
 // ─────────────────────────────────────────
 struct BankAccountRow: View {
     let account: BankAccount
-
     var body: some View {
         HStack(spacing: GMSpacing.md) {
             ZStack {
                 RoundedRectangle(cornerRadius: GMRadius.sm)
-                    .fill(Color.gmGold.opacity(0.1))
-                    .frame(width: 44, height: 44)
+                    .fill(Color.gmGold.opacity(0.1)).frame(width: 44, height: 44)
                 Image(systemName: account.iconName)
                     .font(.system(size: 18, weight: .medium))
                     .foregroundStyle(Color.gmGold)
             }
             VStack(alignment: .leading, spacing: 3) {
-                Text(account.name)
-                    .font(GMFont.body(14, weight: .medium))
-                    .foregroundStyle(Color.gmTextPrimary)
-                Text(account.bankName)
-                    .font(GMFont.caption(11))
-                    .foregroundStyle(Color.gmTextTertiary)
+                Text(account.name).font(GMFont.body(14, weight: .medium)).foregroundStyle(Color.gmTextPrimary)
+                Text(account.bankName).font(GMFont.caption(11)).foregroundStyle(Color.gmTextTertiary)
             }
             Spacer()
             VStack(alignment: .trailing, spacing: 2) {
-                Text(account.balance.jpyFormatted)
-                    .font(GMFont.mono(15, weight: .bold))
-                    .foregroundStyle(Color.gmTextPrimary)
-                Text(account.accountNumber)
-                    .font(GMFont.caption(10))
-                    .foregroundStyle(Color.gmTextTertiary)
+                Text(account.balance.jpyFormatted).font(GMFont.mono(15, weight: .bold)).foregroundStyle(Color.gmTextPrimary)
+                Text(account.accountNumber).font(GMFont.caption(10)).foregroundStyle(Color.gmTextTertiary)
             }
         }
         .padding(GMSpacing.md)
@@ -490,7 +457,6 @@ struct BankAccountRow: View {
 // ─────────────────────────────────────────
 struct SecuritiesAccountRow: View {
     let account: SecuritiesAccount
-
     var body: some View {
         HStack(spacing: GMSpacing.md) {
             ZStack {
@@ -502,23 +468,16 @@ struct SecuritiesAccountRow: View {
                     .foregroundStyle(account.profitLoss >= 0 ? Color.gmPositive : Color.gmNegative)
             }
             VStack(alignment: .leading, spacing: 3) {
-                Text(account.name)
-                    .font(GMFont.body(14, weight: .medium))
-                    .foregroundStyle(Color.gmTextPrimary)
-                Text(account.brokerageName)
-                    .font(GMFont.caption(11))
-                    .foregroundStyle(Color.gmTextTertiary)
+                Text(account.name).font(GMFont.body(14, weight: .medium)).foregroundStyle(Color.gmTextPrimary)
+                Text(account.brokerageName).font(GMFont.caption(11)).foregroundStyle(Color.gmTextTertiary)
             }
             Spacer()
             VStack(alignment: .trailing, spacing: 3) {
-                Text(account.evaluationAmount.jpyFormatted)
-                    .font(GMFont.mono(15, weight: .bold))
-                    .foregroundStyle(Color.gmTextPrimary)
+                Text(account.evaluationAmount.jpyFormatted).font(GMFont.mono(15, weight: .bold)).foregroundStyle(Color.gmTextPrimary)
                 HStack(spacing: 3) {
                     Image(systemName: account.profitLoss >= 0 ? "arrow.up.right" : "arrow.down.right")
                         .font(.system(size: 9, weight: .bold))
-                    Text(account.profitLossRate.signedPercent)
-                        .font(GMFont.caption(11, weight: .semibold))
+                    Text(account.profitLossRate.signedPercent).font(GMFont.caption(11, weight: .semibold))
                 }
                 .foregroundStyle(account.profitLoss >= 0 ? Color.gmPositive : Color.gmNegative)
             }
@@ -533,14 +492,12 @@ struct SecuritiesAccountRow: View {
 // ─────────────────────────────────────────
 struct CreditCardSummaryCard: View {
     @EnvironmentObject var vm: AssetViewModel
-
     var body: some View {
         HStack {
             VStack(alignment: .leading, spacing: GMSpacing.xs) {
                 Text("今月合計引き落とし予定")
                     .font(GMFont.caption(11, weight: .medium))
-                    .foregroundStyle(Color.gmTextTertiary)
-                    .tracking(1)
+                    .foregroundStyle(Color.gmTextTertiary).tracking(1)
                 Text(vm.totalMonthlyBilling.jpyFormatted)
                     .font(GMFont.display(26, weight: .bold))
                     .foregroundStyle(Color.gmTextPrimary)
@@ -548,29 +505,21 @@ struct CreditCardSummaryCard: View {
             Spacer()
             VStack(alignment: .trailing, spacing: GMSpacing.xs) {
                 Text("\(vm.creditCards.count)枚のカード")
-                    .font(GMFont.caption(11))
-                    .foregroundStyle(Color.gmTextTertiary)
+                    .font(GMFont.caption(11)).foregroundStyle(Color.gmTextTertiary)
                 HStack(spacing: -8) {
                     ForEach(vm.creditCards.prefix(3)) { _ in
                         Image(systemName: "creditcard.fill")
-                            .font(.system(size: 22))
-                            .foregroundStyle(GMGradient.goldHorizontal)
+                            .font(.system(size: 22)).foregroundStyle(GMGradient.goldHorizontal)
                     }
                 }
             }
         }
         .padding(GMSpacing.md)
-        .background(
-            RoundedRectangle(cornerRadius: GMRadius.lg)
-                .fill(LinearGradient(
-                    colors: [Color(hex: "#1A0D00"), Color(hex: "#0F0A00")],
-                    startPoint: .topLeading, endPoint: .bottomTrailing
-                ))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: GMRadius.lg)
-                .strokeBorder(Color.gmGold.opacity(0.3), lineWidth: 0.8)
-        )
+        .background(RoundedRectangle(cornerRadius: GMRadius.lg)
+            .fill(LinearGradient(colors: [Color(hex: "#1A0D00"), Color(hex: "#0F0A00")],
+                                 startPoint: .topLeading, endPoint: .bottomTrailing)))
+        .overlay(RoundedRectangle(cornerRadius: GMRadius.lg)
+            .strokeBorder(Color.gmGold.opacity(0.3), lineWidth: 0.8))
     }
 }
 
@@ -579,36 +528,27 @@ struct CreditCardSummaryCard: View {
 // ─────────────────────────────────────────
 struct CreditCardRow: View {
     let card: CreditCard
-
     var body: some View {
         HStack(spacing: GMSpacing.md) {
             ZStack {
                 RoundedRectangle(cornerRadius: GMRadius.sm)
-                    .fill(Color(hex: card.accentColorHex).opacity(0.12))
-                    .frame(width: 44, height: 44)
+                    .fill(Color(hex: card.accentColorHex).opacity(0.12)).frame(width: 44, height: 44)
                 Image(systemName: card.iconName)
                     .font(.system(size: 18, weight: .medium))
                     .foregroundStyle(Color(hex: card.accentColorHex))
             }
             VStack(alignment: .leading, spacing: 3) {
-                Text(card.cardName)
-                    .font(GMFont.body(14, weight: .medium))
-                    .foregroundStyle(Color.gmTextPrimary)
+                Text(card.cardName).font(GMFont.body(14, weight: .medium)).foregroundStyle(Color.gmTextPrimary)
                 HStack(spacing: GMSpacing.xs) {
                     Image(systemName: "clock.fill").font(.system(size: 9))
-                    Text("毎月\(card.billingDay)日引き落とし")
-                        .font(GMFont.caption(11))
+                    Text("毎月\(card.billingDay)日引き落とし").font(GMFont.caption(11))
                 }
                 .foregroundStyle(Color.gmTextTertiary)
             }
             Spacer()
             VStack(alignment: .trailing, spacing: 2) {
-                Text(card.nextBillingAmount.jpyFormatted)
-                    .font(GMFont.mono(14, weight: .bold))
-                    .foregroundStyle(Color.gmTextPrimary)
-                Text("****\(card.cardLastFour)")
-                    .font(GMFont.caption(10))
-                    .foregroundStyle(Color.gmTextTertiary)
+                Text(card.nextBillingAmount.jpyFormatted).font(GMFont.mono(14, weight: .bold)).foregroundStyle(Color.gmTextPrimary)
+                Text("****\(card.cardLastFour)").font(GMFont.caption(10)).foregroundStyle(Color.gmTextTertiary)
             }
         }
         .padding(GMSpacing.md)
@@ -621,56 +561,36 @@ struct CreditCardRow: View {
 // ─────────────────────────────────────────
 struct NextBillingCountdownBanner: View {
     let summary: NextBillingSummary
-
     var body: some View {
         HStack(spacing: GMSpacing.md) {
             ZStack {
-                Circle().stroke(Color.gmGoldDim.opacity(0.3), lineWidth: 2.5)
-                    .frame(width: 52, height: 52)
+                Circle().stroke(Color.gmGoldDim.opacity(0.3), lineWidth: 2.5).frame(width: 52, height: 52)
                 Circle()
                     .trim(from: 0, to: CGFloat(1.0 - Double(summary.daysUntil) / 31.0))
                     .stroke(Color.gmGold, style: StrokeStyle(lineWidth: 2.5, lineCap: .round))
-                    .rotationEffect(.degrees(-90))
-                    .frame(width: 52, height: 52)
+                    .rotationEffect(.degrees(-90)).frame(width: 52, height: 52)
                 VStack(spacing: 0) {
-                    Text("\(summary.daysUntil)")
-                        .font(GMFont.mono(16, weight: .bold))
-                        .foregroundStyle(Color.gmGold)
-                    Text("日後")
-                        .font(GMFont.caption(8))
-                        .foregroundStyle(Color.gmTextTertiary)
+                    Text("\(summary.daysUntil)").font(GMFont.mono(16, weight: .bold)).foregroundStyle(Color.gmGold)
+                    Text("日後").font(GMFont.caption(8)).foregroundStyle(Color.gmTextTertiary)
                 }
             }
             .gmGoldGlow(radius: 8, opacity: 0.25)
-
             VStack(alignment: .leading, spacing: 3) {
-                Text("次の引き落とし")
-                    .font(GMFont.caption(11))
-                    .foregroundStyle(Color.gmTextTertiary)
-                Text(summary.totalAmount.jpyFormatted)
-                    .font(GMFont.mono(18, weight: .bold))
-                    .foregroundStyle(Color.gmTextPrimary)
+                Text("次の引き落とし").font(GMFont.caption(11)).foregroundStyle(Color.gmTextTertiary)
+                Text(summary.totalAmount.jpyFormatted).font(GMFont.mono(18, weight: .bold)).foregroundStyle(Color.gmTextPrimary)
                 Text(summary.cards.map { $0.cardName }.joined(separator: " / "))
-                    .font(GMFont.caption(10))
-                    .foregroundStyle(Color.gmTextTertiary)
-                    .lineLimit(1)
+                    .font(GMFont.caption(10)).foregroundStyle(Color.gmTextTertiary).lineLimit(1)
             }
             Spacer()
-            Image(systemName: "chevron.right")
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundStyle(Color.gmGold)
+            Image(systemName: "chevron.right").font(.system(size: 14, weight: .semibold)).foregroundStyle(Color.gmGold)
         }
         .padding(GMSpacing.md)
         .background(
             RoundedRectangle(cornerRadius: GMRadius.lg)
-                .fill(LinearGradient(
-                    colors: [Color(hex: "#1A1000"), Color(hex: "#0F0F0F")],
-                    startPoint: .leading, endPoint: .trailing
-                ))
-                .overlay(
-                    RoundedRectangle(cornerRadius: GMRadius.lg)
-                        .strokeBorder(GMGradient.goldHorizontal, lineWidth: 0.8)
-                )
+                .fill(LinearGradient(colors: [Color(hex: "#1A1000"), Color(hex: "#0F0F0F")],
+                                     startPoint: .leading, endPoint: .trailing))
+                .overlay(RoundedRectangle(cornerRadius: GMRadius.lg)
+                    .strokeBorder(GMGradient.goldHorizontal, lineWidth: 0.8))
         )
         .gmGoldGlow(radius: 10, opacity: 0.15)
     }
@@ -684,19 +604,17 @@ struct DashboardQuickActions: View {
         VStack(alignment: .leading, spacing: GMSpacing.sm) {
             Text("クイックアクセス")
                 .font(GMFont.caption(12, weight: .semibold))
-                .foregroundStyle(Color.gmTextTertiary)
-                .tracking(1)
-                .padding(.bottom, 2)
+                .foregroundStyle(Color.gmTextTertiary).tracking(1).padding(.bottom, 2)
 
             HStack(spacing: GMSpacing.sm) {
                 NavigationLink(value: DashboardDestination.cardTracker) {
-                    QuickActionTile(icon: "creditcard.fill", label: "カード管理", color: .gmGold)
+                    QuickActionTile(icon: "creditcard.fill",   label: "カード管理",  color: .gmGold)
                 }
                 NavigationLink(value: DashboardDestination.fixedCost) {
                     QuickActionTile(icon: "play.rectangle.fill", label: "固定費管理", color: Color(hex: "#CE93D8"))
                 }
                 NavigationLink(value: DashboardDestination.projection) {
-                    QuickActionTile(icon: "waveform.path.ecg", label: "資産予測", color: Color(hex: "#4FC3F7"))
+                    QuickActionTile(icon: "waveform.path.ecg", label: "資産予測",    color: Color(hex: "#4FC3F7"))
                 }
             }
         }
@@ -704,23 +622,14 @@ struct DashboardQuickActions: View {
 }
 
 struct QuickActionTile: View {
-    let icon: String
-    let label: String
-    let color: Color
-
+    let icon: String; let label: String; let color: Color
     var body: some View {
         VStack(spacing: GMSpacing.xs) {
             ZStack {
-                RoundedRectangle(cornerRadius: GMRadius.md)
-                    .fill(color.opacity(0.12))
-                    .frame(height: 52)
-                Image(systemName: icon)
-                    .font(.system(size: 22, weight: .medium))
-                    .foregroundStyle(color)
+                RoundedRectangle(cornerRadius: GMRadius.md).fill(color.opacity(0.12)).frame(height: 52)
+                Image(systemName: icon).font(.system(size: 22, weight: .medium)).foregroundStyle(color)
             }
-            Text(label)
-                .font(GMFont.caption(11, weight: .medium))
-                .foregroundStyle(Color.gmTextSecondary)
+            Text(label).font(GMFont.caption(11, weight: .medium)).foregroundStyle(Color.gmTextSecondary)
         }
         .frame(maxWidth: .infinity)
     }

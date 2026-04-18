@@ -28,7 +28,7 @@ struct SettingsView: View {
                         onEdit: { showProfileEdit = true }
                     )
                     .padding(.horizontal, GMSpacing.md)
-                    .padding(.top, GMSpacing.md)
+                    .padding(.top, 100) // clearance for SettingsPageHeader overlay
 
                     // ── Notification Settings ──
                     SettingsSection(title: "通知設定", icon: "bell.fill") {
@@ -204,12 +204,11 @@ struct SettingsView: View {
                     }
                     .padding(.vertical, GMSpacing.lg)
 
-                    Spacer().frame(height: 20)
+                    Spacer().frame(height: 120)
                 }
             }
         }
-        .navigationBarTitleDisplayMode(.inline)
-        .navigationBarHidden(true)
+        .toolbar(.hidden, for: .navigationBar)
         .sheet(isPresented: $showProfileEdit) {
             ProfileEditSheet(displayName: $displayName, tagline: $tagline)
         }

@@ -57,11 +57,13 @@ struct WealthCalendarView: View {
                     }
                     MonthCashflowSummary(month: displayedMonth)
                         .padding(.horizontal, GMSpacing.md)
-                    Spacer().frame(height: 100)
+                    // Bottom clearance for tab bar + FAB
+                    Spacer().frame(height: 120)
                 }
                 .padding(.top, GMSpacing.md)
             }
         }
+        .toolbar(.hidden, for: .navigationBar)
     }
 
     // ─── Calendar Card ───

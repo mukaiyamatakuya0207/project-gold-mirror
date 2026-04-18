@@ -46,13 +46,14 @@ struct AnalysisView: View {
                     ScrollView(showsIndicators: false) {
                         VStack(spacing: GMSpacing.md) {
                             MonthlyReportSection()
-                            Spacer().frame(height: 100)
+                            Spacer().frame(height: 120)
                         }
                         .padding(.top, GMSpacing.sm)
                     }
                 }
             }
         }
+        .toolbar(.hidden, for: .navigationBar)
     }
 }
 
