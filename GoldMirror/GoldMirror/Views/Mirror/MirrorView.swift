@@ -55,7 +55,7 @@ struct MirrorView: View {
                             .padding(.bottom, GMSpacing.md)
                     }
 
-                    Spacer().frame(height: 50)  // FAB overhang clearance only; safeAreaInset handles tab bar
+                    Spacer().frame(height: 28)  // FAB overhang above bar top edge
                 }
                 .padding(.top, GMSpacing.md)
             }

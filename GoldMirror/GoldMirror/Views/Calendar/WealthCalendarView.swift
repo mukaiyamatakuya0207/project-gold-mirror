@@ -58,7 +58,7 @@ struct WealthCalendarView: View {
                     MonthCashflowSummary(month: displayedMonth)
                         .padding(.horizontal, GMSpacing.md)
                     // Bottom clearance for tab bar + FAB
-                    Spacer().frame(height: 50)  // FAB overhang clearance only; safeAreaInset handles tab bar
+                    Spacer().frame(height: 28)  // FAB overhang above bar top edge
                 }
                 .padding(.top, GMSpacing.md)
             }

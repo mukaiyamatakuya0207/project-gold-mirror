@@ -109,7 +109,7 @@ struct DashboardView: View {
                         .padding(.top, GMSpacing.md)
 
                     // Bottom clearance: tab bar (82) + FAB overhang (28) + margin
-                    Spacer().frame(height: 50)  // FAB overhang clearance only; safeAreaInset handles tab bar
+                    Spacer().frame(height: 28)  // FAB overhang above bar top edge
                 }
             }
         }

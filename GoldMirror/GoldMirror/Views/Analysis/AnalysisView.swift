@@ -46,7 +46,7 @@ struct AnalysisView: View {
                     ScrollView(showsIndicators: false) {
                         VStack(spacing: GMSpacing.md) {
                             MonthlyReportSection()
-                            Spacer().frame(height: 50)  // FAB overhang clearance only; safeAreaInset handles tab bar
+                            Spacer().frame(height: 28)  // FAB overhang above bar top edge
                         }
                         .padding(.top, GMSpacing.sm)
                     }
