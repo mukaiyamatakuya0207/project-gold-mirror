@@ -149,3 +149,27 @@ struct PortfolioSummary {
         totalBankBalance + totalSecuritiesValue
     }
 }
+
+struct EstimatedAccountBalance: Identifiable {
+    let id: UUID
+    let title: String
+    let subtitle: String
+    let amount: Double
+}
+
+struct EstimatedBalances {
+    let bankAccounts: [EstimatedAccountBalance]
+    let securitiesAccounts: [EstimatedAccountBalance]
+
+    var totalBankBalance: Double {
+        bankAccounts.reduce(0) { $0 + $1.amount }
+    }
+
+    var totalSecuritiesBalance: Double {
+        securitiesAccounts.reduce(0) { $0 + $1.amount }
+    }
+
+    var totalAssets: Double {
+        totalBankBalance + totalSecuritiesBalance
+    }
+}

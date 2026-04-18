@@ -8,6 +8,7 @@ import Combine
 @MainActor
 final class DataManager: ObservableObject {
     private static var jpCalendar: Calendar { .gmJapan }
+    private static let expenseCategoriesStorageKey = "GoldMirror.expenseCategories.v1"
 
     // ─────────────────────────────────────────
     // MARK: Published State
@@ -20,6 +21,13 @@ final class DataManager: ObservableObject {
     @Published var securitiesAccounts: [SecuritiesAccount] = MockData.securitiesAccounts
     @Published var creditCards: [CreditCard]               = MockData.creditCards
     @Published var cardPaymentSchedules: [CardPaymentSchedule] = []
+    @Published var expenseCategories: [Category] = Category.defaultExpenseCategories {
+        didSet { saveExpenseCategories() }
+    }
+
+    init() {
+        loadExpenseCategories()
+    }
 
     // ─────────────────────────────────────────
     // MARK: Computed – Totals
@@ -161,7 +169,7 @@ final class DataManager: ObservableObject {
                 for transaction in futureTransactions {
                     cashBalance += transaction.delta
                     isEvent = true
-                    eventLabels.append(transaction.category.rawValue)
+                    eventLabels.append(transaction.displayCategoryName)
                 }
 
                 cashBalance += variableDailyDelta
@@ -300,6 +308,45 @@ final class DataManager: ObservableObject {
     }
 
     // ─────────────────────────────────────────
+    // MARK: CRUD – Expense Categories
+    // ─────────────────────────────────────────
+    func addExpenseCategory(_ category: Category) {
+        expenseCategories.append(category)
+    }
+
+    func updateExpenseCategory(_ category: Category) {
+        guard let idx = expenseCategories.firstIndex(where: { $0.id == category.id }) else { return }
+        expenseCategories[idx] = category
+    }
+
+    func deleteExpenseCategory(_ category: Category) {
+        expenseCategories.removeAll { $0.id == category.id }
+    }
+
+    func moveExpenseCategories(from source: IndexSet, to destination: Int) {
+        expenseCategories.move(fromOffsets: source, toOffset: destination)
+    }
+
+    func resetExpenseCategoriesToDefault() {
+        expenseCategories = Category.defaultExpenseCategories
+    }
+
+    private func loadExpenseCategories() {
+        guard let data = UserDefaults.standard.data(forKey: Self.expenseCategoriesStorageKey),
+              let decoded = try? JSONDecoder().decode([Category].self, from: data),
+              !decoded.isEmpty else {
+            expenseCategories = Category.defaultExpenseCategories
+            return
+        }
+        expenseCategories = decoded
+    }
+
+    private func saveExpenseCategories() {
+        guard let data = try? JSONEncoder().encode(expenseCategories) else { return }
+        UserDefaults.standard.set(data, forKey: Self.expenseCategoriesStorageKey)
+    }
+
+    // ─────────────────────────────────────────
     // MARK: CRUD – Fixed Costs
     // ─────────────────────────────────────────
     func addFixedCost(_ cost: FixedCost) {
@@ -429,6 +476,54 @@ final class DataManager: ObservableObject {
         transactions.filter { Self.jpCalendar.isDate($0.date, inSameDayAs: date) }
     }
 
+    func estimatedBalances(for date: Date) -> EstimatedBalances {
+        let calendar = Self.jpCalendar
+        let todayStart = calendar.startOfDay(for: Date())
+        let targetStart = calendar.startOfDay(for: date)
+
+        var bankBalances = Dictionary(uniqueKeysWithValues: bankAccounts.map { ($0.id, $0.balance) })
+        var securitiesBalances = Dictionary(uniqueKeysWithValues: securitiesAccounts.map { ($0.id, $0.balance) })
+
+        if targetStart > todayStart {
+            applyEstimatedChanges(
+                fromExclusive: todayStart,
+                throughInclusive: targetStart,
+                direction: 1,
+                calendar: calendar,
+                bankBalances: &bankBalances,
+                securitiesBalances: &securitiesBalances
+            )
+        } else if targetStart < todayStart {
+            applyEstimatedChanges(
+                fromExclusive: targetStart,
+                throughInclusive: todayStart,
+                direction: -1,
+                calendar: calendar,
+                bankBalances: &bankBalances,
+                securitiesBalances: &securitiesBalances
+            )
+        }
+
+        return EstimatedBalances(
+            bankAccounts: bankAccounts.map { account in
+                EstimatedAccountBalance(
+                    id: account.id,
+                    title: account.name,
+                    subtitle: account.bankName,
+                    amount: bankBalances[account.id] ?? account.balance
+                )
+            },
+            securitiesAccounts: securitiesAccounts.map { account in
+                EstimatedAccountBalance(
+                    id: account.id,
+                    title: account.name,
+                    subtitle: account.brokerageName,
+                    amount: securitiesBalances[account.id] ?? account.balance
+                )
+            }
+        )
+    }
+
     func transactionTotals(in month: Date) -> (income: Double, expense: Double) {
         let calendar = Self.jpCalendar
         return transactions.reduce(into: (income: 0.0, expense: 0.0)) { totals, transaction in
@@ -519,6 +614,78 @@ final class DataManager: ObservableObject {
             let targetID = linkedBankID ?? bankAccounts.first?.id
             guard let idx = bankAccounts.firstIndex(where: { $0.id == targetID }) else { return }
             bankAccounts[idx].balance -= transaction.amount
+        }
+    }
+
+    private func applyEstimatedChanges(
+        fromExclusive start: Date,
+        throughInclusive end: Date,
+        direction: Double,
+        calendar: Calendar,
+        bankBalances: inout [UUID: Double],
+        securitiesBalances: inout [UUID: Double]
+    ) {
+        for transaction in transactions {
+            let day = calendar.startOfDay(for: transaction.date)
+            guard day > start && day <= end else { continue }
+            applyEstimatedTransaction(
+                transaction,
+                direction: direction,
+                bankBalances: &bankBalances,
+                securitiesBalances: &securitiesBalances
+            )
+        }
+
+        for schedule in cardPaymentSchedules {
+            let day = calendar.startOfDay(for: schedule.paymentDate)
+            guard day > start && day <= end,
+                  let linkedBankID = creditCards.first(where: { $0.id == schedule.cardID })?.linkedBankAccountID else {
+                continue
+            }
+            bankBalances[linkedBankID, default: 0] -= schedule.amount * direction
+        }
+    }
+
+    private func applyEstimatedTransaction(
+        _ transaction: Transaction,
+        direction: Double,
+        bankBalances: inout [UUID: Double],
+        securitiesBalances: inout [UUID: Double]
+    ) {
+        switch transaction.type {
+        case .income:
+            if transaction.incomeDestinationKind == .securities {
+                let targetID = transaction.securitiesAccountID ?? securitiesAccounts.first?.id
+                guard let targetID else { return }
+                securitiesBalances[targetID, default: 0] += transaction.amount * direction
+            } else {
+                let targetID = transaction.bankAccountID ?? bankAccounts.first?.id
+                guard let targetID else { return }
+                bankBalances[targetID, default: 0] += transaction.amount * direction
+            }
+        case .expense:
+            if transaction.isAssetAdjustment {
+                switch transaction.assetAdjustmentTargetKind {
+                case .securities:
+                    let targetID = transaction.securitiesAccountID ?? securitiesAccounts.first?.id
+                    guard let targetID else { return }
+                    securitiesBalances[targetID, default: 0] -= transaction.amount * direction
+                case .bank:
+                    let targetID = transaction.bankAccountID ?? bankAccounts.first?.id
+                    guard let targetID else { return }
+                    bankBalances[targetID, default: 0] -= transaction.amount * direction
+                case .none:
+                    return
+                }
+                return
+            }
+
+            if transaction.paymentMethod == .creditCard { return }
+            let targetID = transaction.creditCardID.flatMap { cardID in
+                creditCards.first(where: { $0.id == cardID })?.linkedBankAccountID
+            } ?? bankAccounts.first?.id
+            guard let targetID else { return }
+            bankBalances[targetID, default: 0] -= transaction.amount * direction
         }
     }
 

@@ -148,6 +148,18 @@ struct SettingsView: View {
                             FixedCostManagerView()
                                 .environmentObject(dm)
                         }
+
+                        GMSettingsDivider()
+
+                        SettingsLinkRow(
+                            icon: "tag.fill",
+                            iconColor: Color(hex: "#F0D060"),
+                            title: "カテゴリ管理",
+                            subtitle: "支出カテゴリの追加・編集・並び替え"
+                        ) {
+                            CategoryManagementView()
+                                .environmentObject(dm)
+                        }
                     }
                     .padding(.horizontal, GMSpacing.md)
 

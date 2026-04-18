@@ -297,10 +297,15 @@ struct WealthCalendarDayCell: View {
 // MARK: Day Detail Popup
 // ─────────────────────────────────────────
 struct DayDetailPopup: View {
+    @EnvironmentObject var dm: DataManager
     let snapshot: DayFinancialSnapshot
 
     private var dateStr: String {
         snapshot.date.japaneseDateString
+    }
+
+    private var estimatedBalances: EstimatedBalances {
+        dm.estimatedBalances(for: snapshot.date)
     }
 
     var body: some View {
@@ -394,24 +399,28 @@ struct DayDetailPopup: View {
             }
 
             // ─── Projected Net Assets ───
-            HStack {
-                VStack(alignment: .leading, spacing: 3) {
-                    Text("この日の予想純資産")
-                        .font(GMFont.caption(11, weight: .medium))
-                        .foregroundStyle(Color.gmTextTertiary)
-                    Text(snapshot.projectedNetAssets.jpyFormatted)
-                        .font(GMFont.display(22, weight: .bold))
-                        .foregroundStyle(GMGradient.goldHorizontal)
+            VStack(alignment: .leading, spacing: GMSpacing.md) {
+                HStack {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("この日の予想純資産")
+                            .font(GMFont.caption(11, weight: .medium))
+                            .foregroundStyle(Color.gmTextTertiary)
+                        Text(estimatedBalances.totalAssets.jpyFormatted)
+                            .font(GMFont.display(22, weight: .bold))
+                            .foregroundStyle(GMGradient.goldHorizontal)
+                    }
+                    Spacer()
+                    VStack(alignment: .trailing, spacing: 3) {
+                        Text("予想現金")
+                            .font(GMFont.caption(10))
+                            .foregroundStyle(Color.gmTextTertiary)
+                        Text(estimatedBalances.totalBankBalance.jpyFormatted)
+                            .font(GMFont.mono(14, weight: .bold))
+                            .foregroundStyle(Color.gmTextSecondary)
+                    }
                 }
-                Spacer()
-                VStack(alignment: .trailing, spacing: 3) {
-                    Text("予想現金")
-                        .font(GMFont.caption(10))
-                        .foregroundStyle(Color.gmTextTertiary)
-                    Text(snapshot.projectedCash.jpyFormatted)
-                        .font(GMFont.mono(14, weight: .bold))
-                        .foregroundStyle(Color.gmTextSecondary)
-                }
+
+                EstimatedBalanceBreakdown(balances: estimatedBalances)
             }
             .padding(GMSpacing.sm)
             .background(
@@ -426,6 +435,83 @@ struct DayDetailPopup: View {
         .padding(GMSpacing.md)
         .gmCardStyle(elevated: true)
         .gmGoldGlow(radius: 12, opacity: 0.15)
+        .frame(maxWidth: 600)
+        .frame(maxWidth: .infinity, alignment: .center)
+    }
+}
+
+struct EstimatedBalanceBreakdown: View {
+    let balances: EstimatedBalances
+
+    var body: some View {
+        ScrollView(showsIndicators: false) {
+            VStack(alignment: .leading, spacing: GMSpacing.sm) {
+                EstimatedBalanceSection(
+                    title: "銀行口座",
+                    icon: "building.columns.fill",
+                    accounts: balances.bankAccounts
+                )
+
+                Rectangle()
+                    .fill(Color.gmGold.opacity(0.35))
+                    .frame(height: 0.5)
+
+                EstimatedBalanceSection(
+                    title: "証券口座",
+                    icon: "chart.line.uptrend.xyaxis",
+                    accounts: balances.securitiesAccounts
+                )
+            }
+        }
+        .frame(maxHeight: 260)
+    }
+}
+
+struct EstimatedBalanceSection: View {
+    let title: String
+    let icon: String
+    let accounts: [EstimatedAccountBalance]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: GMSpacing.xs) {
+            HStack(spacing: GMSpacing.xs) {
+                Image(systemName: icon)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(Color.gmGold)
+                Text(title)
+                    .font(GMFont.caption(12, weight: .semibold))
+                    .foregroundStyle(Color.gmTextPrimary)
+            }
+
+            if accounts.isEmpty {
+                Text("登録済み口座がありません")
+                    .font(GMFont.caption(11))
+                    .foregroundStyle(Color.gmTextTertiary)
+                    .padding(.vertical, 4)
+            } else {
+                ForEach(accounts) { account in
+                    HStack(spacing: GMSpacing.sm) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(account.title)
+                                .font(GMFont.body(12, weight: .semibold))
+                                .foregroundStyle(Color.gmTextPrimary)
+                                .lineLimit(1)
+                            Text(account.subtitle)
+                                .font(GMFont.caption(10))
+                                .foregroundStyle(Color.gmTextTertiary)
+                                .lineLimit(1)
+                        }
+                        Spacer()
+                        Text(account.amount.jpyFormatted)
+                            .font(GMFont.mono(12, weight: .bold))
+                            .foregroundStyle(Color.gmGold)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.7)
+                    }
+                    .padding(.vertical, 4)
+                }
+            }
+        }
     }
 }
 
@@ -548,19 +634,19 @@ extension DataManager {
             switch transaction.type {
             case .income:
                 incomes.append(ScheduledIncome(
-                    name: transaction.memo.isEmpty ? transaction.category.rawValue : transaction.memo,
+                    name: transaction.memo.isEmpty ? transaction.displayCategoryName : transaction.memo,
                     amount: transaction.amount,
                     category: incomeCategory(for: transaction.category),
-                    icon: transaction.category.icon,
+                    icon: transaction.displayCategoryIconName,
                     color: Color.gmPositive
                 ))
             case .expense:
                 expenses.append(ScheduledExpense(
-                    name: transaction.memo.isEmpty ? transaction.category.rawValue : transaction.memo,
+                    name: transaction.memo.isEmpty ? transaction.displayCategoryName : transaction.memo,
                     amount: transaction.amount,
                     category: .transaction,
-                    icon: transaction.category.icon,
-                    color: transaction.category.color
+                    icon: transaction.displayCategoryIconName,
+                    color: transaction.displayCategoryColor
                 ))
             }
         }

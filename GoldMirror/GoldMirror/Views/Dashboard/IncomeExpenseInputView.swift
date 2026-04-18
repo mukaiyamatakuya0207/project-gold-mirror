@@ -134,6 +134,21 @@ struct Transaction: Identifiable {
     var incomeDestinationKind: IncomeDestinationKind = .bank
     var isAssetAdjustment: Bool = false
     var assetAdjustmentTargetKind: AssetAccountKind? = nil
+    var categoryName: String? = nil
+    var categoryIconName: String? = nil
+    var categoryColorHex: String? = nil
+
+    var displayCategoryName: String {
+        categoryName ?? category.rawValue
+    }
+
+    var displayCategoryIconName: String {
+        categoryIconName ?? category.icon
+    }
+
+    var displayCategoryColor: Color {
+        categoryColorHex.map { Color(hex: $0) } ?? category.color
+    }
 }
 
 // ─────────────────────────────────────────
@@ -157,9 +172,10 @@ struct IncomeExpenseInputView: View {
     @State private var selectedAdjustmentTargetKind: AssetAccountKind = .securities
     @State private var selectedAdjustmentBankAccountID: UUID?
     @State private var selectedAdjustmentSecuritiesAccountID: UUID?
+    @State private var selectedExpenseCategoryID: UUID?
 
     private var categories: [TransactionCategory] {
-        transactionType == .income ? TransactionCategory.incomeCategories : TransactionCategory.expenseCategories
+        TransactionCategory.incomeCategories
     }
 
     private var parsedAmount: Double { Double(amountText.replacingOccurrences(of: ",", with: "")) ?? 0 }
@@ -169,7 +185,13 @@ struct IncomeExpenseInputView: View {
     }
 
     private var isAssetAdjustment: Bool {
-        transactionType == .expense && selectedCategory == .assetImpairment
+        transactionType == .expense && selectedExpenseCategory?.isAssetAdjustment == true
+    }
+
+    private var selectedExpenseCategory: Category? {
+        selectedExpenseCategoryID.flatMap { selectedID in
+            dm.expenseCategories.first { $0.id == selectedID }
+        } ?? dm.expenseCategories.first
     }
 
     private var formattedAmount: String {
@@ -193,13 +215,12 @@ struct IncomeExpenseInputView: View {
                                 Button {
                                     withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
                                         transactionType = t
-                                        selectedCategory = (t == .income
-                                                            ? TransactionCategory.incomeCategories.first
-                                                            : TransactionCategory.expenseCategories.first) ?? .food
                                         if t == .income {
+                                            selectedCategory = TransactionCategory.incomeCategories.first ?? .salary
                                             selectedPaymentMethod = .cash
                                             ensureIncomeDestinationSelection()
                                         } else {
+                                            ensureExpenseCategorySelection()
                                             selectedIncomeBankAccountID = nil
                                             selectedIncomeSecuritiesAccountID = nil
                                             ensureAssetAdjustmentSelection()
@@ -268,15 +289,28 @@ struct IncomeExpenseInputView: View {
 
                             let cols = Array(repeating: GridItem(.flexible(), spacing: GMSpacing.sm), count: 4)
                             LazyVGrid(columns: cols, spacing: GMSpacing.sm) {
-                                ForEach(categories, id: \.rawValue) { cat in
-                                    CategoryChip(
-                                        category: cat,
-                                        isSelected: selectedCategory == cat
-                                    ) {
-                                        withAnimation(.spring(response: 0.25, dampingFraction: 0.75)) {
-                                            selectedCategory = cat
-                                            ensureIncomeDestinationSelection()
-                                            ensureAssetAdjustmentSelection()
+                                if transactionType == .income {
+                                    ForEach(categories, id: \.rawValue) { cat in
+                                        CategoryChip(
+                                            category: cat,
+                                            isSelected: selectedCategory == cat
+                                        ) {
+                                            withAnimation(.spring(response: 0.25, dampingFraction: 0.75)) {
+                                                selectedCategory = cat
+                                                ensureIncomeDestinationSelection()
+                                            }
+                                        }
+                                    }
+                                } else {
+                                    ForEach(dm.expenseCategories) { cat in
+                                        ExpenseCategoryChip(
+                                            category: cat,
+                                            isSelected: selectedExpenseCategory?.id == cat.id
+                                        ) {
+                                            withAnimation(.spring(response: 0.25, dampingFraction: 0.75)) {
+                                                selectedExpenseCategoryID = cat.id
+                                                ensureAssetAdjustmentSelection()
+                                            }
                                         }
                                     }
                                 }
@@ -520,8 +554,13 @@ struct IncomeExpenseInputView: View {
         .presentationDragIndicator(.visible)
         .presentationBackground(Color.gmBackground)
         .onAppear {
+            ensureExpenseCategorySelection()
             ensureCreditCardSelection()
             ensureIncomeDestinationSelection()
+            ensureAssetAdjustmentSelection()
+        }
+        .onChange(of: dm.expenseCategories.map(\.id)) { _, _ in
+            ensureExpenseCategorySelection()
             ensureAssetAdjustmentSelection()
         }
         .onChange(of: dm.creditCards.map(\.id)) { _, _ in
@@ -642,6 +681,15 @@ struct IncomeExpenseInputView: View {
         }
     }
 
+    private func ensureExpenseCategorySelection() {
+        guard transactionType == .expense else { return }
+        guard let current = selectedExpenseCategoryID,
+              dm.expenseCategories.contains(where: { $0.id == current }) else {
+            selectedExpenseCategoryID = dm.expenseCategories.first?.id
+            return
+        }
+    }
+
     private func ensureAssetAdjustmentSelection() {
         guard isAssetAdjustment else { return }
         if selectedAdjustmentTargetKind == .securities {
@@ -680,6 +728,15 @@ struct IncomeExpenseInputView: View {
 
     private func saveTransaction() {
         let card = selectedCreditCard
+        let expenseCategory = selectedExpenseCategory
+        let transactionCategory: TransactionCategory
+        if transactionType == .income {
+            transactionCategory = selectedCategory
+        } else if expenseCategory?.isAssetAdjustment == true {
+            transactionCategory = .assetImpairment
+        } else {
+            transactionCategory = .other_ex
+        }
         let bankID: UUID?
         if transactionType == .income && !isInvestmentIncome {
             bankID = incomeBankSelectionBinding.wrappedValue
@@ -711,7 +768,7 @@ struct IncomeExpenseInputView: View {
         let t = Transaction(
             type: transactionType,
             amount: parsedAmount,
-            category: selectedCategory,
+            category: transactionCategory,
             date: selectedDate,
             memo: finalMemo,
             paymentMethod: transactionType == .expense ? selectedPaymentMethod : .cash,
@@ -723,7 +780,10 @@ struct IncomeExpenseInputView: View {
             securitiesAccountName: securitiesName,
             incomeDestinationKind: isInvestmentIncome ? .securities : .bank,
             isAssetAdjustment: isAssetAdjustment,
-            assetAdjustmentTargetKind: isAssetAdjustment ? selectedAdjustmentTargetKind : nil
+            assetAdjustmentTargetKind: isAssetAdjustment ? selectedAdjustmentTargetKind : nil,
+            categoryName: transactionType == .expense ? expenseCategory?.name : nil,
+            categoryIconName: transactionType == .expense ? expenseCategory?.iconName : nil,
+            categoryColorHex: transactionType == .expense ? expenseCategory?.colorHex : nil
         )
         // Persist via DataManager
         dm.addTransaction(t)
@@ -766,6 +826,43 @@ struct CategoryChip: View {
                     .foregroundStyle(isSelected ? category.color : Color.gmTextTertiary)
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)
+            }
+        }
+        .buttonStyle(.plain)
+        .scaleEffect(isSelected ? 1.04 : 1.0)
+        .animation(.spring(response: 0.25, dampingFraction: 0.7), value: isSelected)
+    }
+}
+
+struct ExpenseCategoryChip: View {
+    let category: Category
+    let isSelected: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            VStack(spacing: 5) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 10)
+                        .fill(isSelected ? category.color.opacity(0.25) : Color.gmSurface)
+                        .frame(height: 44)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 10)
+                                .strokeBorder(
+                                    isSelected ? category.color : Color.gmGoldDim.opacity(0.2),
+                                    lineWidth: isSelected ? 1.5 : 0.5
+                                )
+                        )
+
+                    Image(systemName: category.iconName)
+                        .font(.system(size: 16, weight: .medium))
+                        .foregroundStyle(isSelected ? category.color : Color.gmTextTertiary)
+                }
+                Text(category.name)
+                    .font(GMFont.caption(9, weight: .medium))
+                    .foregroundStyle(isSelected ? category.color : Color.gmTextTertiary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.55)
             }
         }
         .buttonStyle(.plain)
