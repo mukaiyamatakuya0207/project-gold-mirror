@@ -87,9 +87,28 @@ struct MainTabView: View {
 
     @State private var selectedTab: Int = 0
     @State private var showIncome       = false
+    @State private var dashboardPath = NavigationPath()
+    @State private var calendarPath = NavigationPath()
+    @State private var mirrorPath = NavigationPath()
+    @State private var analysisPath = NavigationPath()
+    @State private var settingsPath = NavigationPath()
+    @State private var iPadDetailPath = NavigationPath()
+    @State private var dashboardRootID = UUID()
+    @State private var calendarRootID = UUID()
+    @State private var mirrorRootID = UUID()
+    @State private var analysisRootID = UUID()
+    @State private var settingsRootID = UUID()
+    @State private var iPadDetailRootID = UUID()
 
     private var shouldShowIncomeButton: Bool {
         selectedTab == GMTab.dashboard.rawValue || selectedTab == GMTab.calendar.rawValue
+    }
+
+    private var selectedTabBinding: Binding<Int> {
+        Binding(
+            get: { selectedTab },
+            set: { selectTab($0) }
+        )
     }
 
     init() {
@@ -109,6 +128,9 @@ struct MainTabView: View {
         .background(Color.gmBackground.ignoresSafeArea())
         .environment(\.locale, Locale(identifier: "ja_JP"))
         .environmentObject(viewModel)
+        .onChange(of: selectedTab) { _, _ in
+            resetAllNavigationStacks()
+        }
         .sheet(isPresented: $showIncome) {
             IncomeExpenseInputView()
                 .environmentObject(dataManager)
@@ -121,21 +143,26 @@ struct MainTabView: View {
             VStack(spacing: 0) {
 
                 // ── Tab content ──────────────────────────────────────────
-                TabView(selection: $selectedTab) {
+                TabView(selection: selectedTabBinding) {
 
-                    NavigationStack { tabContent(.dashboard) }
+                    NavigationStack(path: $dashboardPath) { tabContent(.dashboard) }
+                        .id(dashboardRootID)
                         .tag(GMTab.dashboard.rawValue)
 
-                    NavigationStack { tabContent(.calendar) }
+                    NavigationStack(path: $calendarPath) { tabContent(.calendar) }
+                        .id(calendarRootID)
                         .tag(GMTab.calendar.rawValue)
 
-                    NavigationStack { tabContent(.mirror) }
+                    NavigationStack(path: $mirrorPath) { tabContent(.mirror) }
+                        .id(mirrorRootID)
                         .tag(GMTab.mirror.rawValue)
 
-                    NavigationStack { tabContent(.analysis) }
+                    NavigationStack(path: $analysisPath) { tabContent(.analysis) }
+                        .id(analysisRootID)
                         .tag(GMTab.analysis.rawValue)
 
-                    NavigationStack { tabContent(.settings) }
+                    NavigationStack(path: $settingsPath) { tabContent(.settings) }
+                        .id(settingsRootID)
                         .tag(GMTab.settings.rawValue)
                 }
                 // Keep iOS state restoration; hides page dots
@@ -145,7 +172,7 @@ struct MainTabView: View {
 
                 // ── Custom Tab Bar (always at bottom) ────────────────────
                 GMCustomTabBar(
-                    selectedTab: $selectedTab,
+                    selectedTab: selectedTabBinding,
                     bottomSafeArea: proxy.safeAreaInsets.bottom
                 )
             }
@@ -165,13 +192,14 @@ struct MainTabView: View {
     private func iPadSplitLayout(proxy: GeometryProxy) -> some View {
         ZStack(alignment: .bottomTrailing) {
             NavigationSplitView {
-                GMIPadSidebar(selectedTab: $selectedTab)
+                GMIPadSidebar(selectedTab: selectedTabBinding)
                     .navigationSplitViewColumnWidth(min: 230, ideal: 260, max: 300)
             } detail: {
-                NavigationStack {
+                NavigationStack(path: $iPadDetailPath) {
                     tabContent(GMTab(rawValue: selectedTab) ?? .dashboard)
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
+                .id(iPadDetailRootID)
             }
             .navigationSplitViewStyle(.balanced)
             .tint(Color.gmGold)
@@ -210,6 +238,31 @@ struct MainTabView: View {
                 .environmentObject(dataManager)
                 .environmentObject(viewModel)
         }
+    }
+
+    private func selectTab(_ rawValue: Int) {
+        guard GMTab(rawValue: rawValue) != nil else { return }
+        let isSameTab = selectedTab == rawValue
+        if !isSameTab {
+            selectedTab = rawValue
+        }
+        resetAllNavigationStacks()
+    }
+
+    private func resetAllNavigationStacks() {
+        dashboardPath = NavigationPath()
+        calendarPath = NavigationPath()
+        mirrorPath = NavigationPath()
+        analysisPath = NavigationPath()
+        settingsPath = NavigationPath()
+        iPadDetailPath = NavigationPath()
+
+        dashboardRootID = UUID()
+        calendarRootID = UUID()
+        mirrorRootID = UUID()
+        analysisRootID = UUID()
+        settingsRootID = UUID()
+        iPadDetailRootID = UUID()
     }
 
     private var incomeFloatingButton: some View {

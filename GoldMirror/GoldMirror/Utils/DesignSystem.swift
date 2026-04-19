@@ -98,29 +98,53 @@ struct GMGradient {
 // MARK: Typography
 // ─────────────────────────────────────────
 struct GMFont {
+    static let japaneseFontName = "Noto Sans JP"
+    static let latinFontName = "Arial-BoldMT"
+
+    private static func japanese(_ size: CGFloat, weight: Font.Weight) -> Font {
+        .custom(japaneseFontName, size: size).weight(weight)
+    }
+
+    private static func latin(_ size: CGFloat, weight: Font.Weight) -> Font {
+        .custom(latinFontName, size: size).weight(.bold)
+    }
+
     // Display
     static func display(_ size: CGFloat, weight: Font.Weight = .bold) -> Font {
-        .system(size: size, weight: weight, design: .rounded)
+        japanese(size, weight: weight)
     }
 
     // Heading
     static func heading(_ size: CGFloat = 20, weight: Font.Weight = .semibold) -> Font {
-        .system(size: size, weight: weight, design: .rounded)
+        japanese(size, weight: weight)
     }
 
     // Body
     static func body(_ size: CGFloat = 15, weight: Font.Weight = .regular) -> Font {
-        .system(size: size, weight: weight, design: .rounded)
+        japanese(size, weight: weight)
     }
 
     // Caption
     static func caption(_ size: CGFloat = 12, weight: Font.Weight = .medium) -> Font {
-        .system(size: size, weight: weight, design: .rounded)
+        japanese(size, weight: weight)
     }
 
     // Mono (金額表示用)
     static func mono(_ size: CGFloat = 24, weight: Font.Weight = .bold) -> Font {
-        .system(size: size, weight: weight, design: .monospaced)
+        latin(size, weight: weight).monospacedDigit()
+    }
+}
+
+struct GMAppFontModifier: ViewModifier {
+    func body(content: Content) -> some View {
+        content
+            .font(GMFont.body())
+    }
+}
+
+extension View {
+    func fontCustom() -> some View {
+        modifier(GMAppFontModifier())
     }
 }
 

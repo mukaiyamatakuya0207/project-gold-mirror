@@ -10,10 +10,23 @@ final class DataManager: ObservableObject {
     private static var jpCalendar: Calendar { .gmJapan }
     private static let expenseCategoriesStorageKey = "GoldMirror.expenseCategories.v1"
     private static let backupSchemaVersion = 1
+    nonisolated static let profileDisplayNameStorageKey = "GoldMirror.profile.displayName"
+    nonisolated static let profileTaglineStorageKey = "GoldMirror.profile.tagline"
+    nonisolated static let profileIsPublicStorageKey = "GoldMirror.profile.isPublic"
+    nonisolated static let profileGenderStorageKey = "GoldMirror.profile.gender"
+    nonisolated static let profileAgeStorageKey = "GoldMirror.profile.age"
+    nonisolated static let profilePrefectureStorageKey = "GoldMirror.profile.prefecture"
+    nonisolated static let profileEmailStorageKey = "GoldMirror.profile.email"
+    nonisolated static let profileStandardMonthlyRemunerationStorageKey = "GoldMirror.profile.standardMonthlyRemuneration"
+    nonisolated static let profileDependentsCountStorageKey = "GoldMirror.profile.dependentsCount"
+    nonisolated static let profileIncomeTaxCategoryStorageKey = "GoldMirror.profile.incomeTaxCategory"
+    nonisolated static let profileResidentTaxAnnualStorageKey = "GoldMirror.profile.residentTaxAnnual"
+    nonisolated static let profileResidentTaxMonthlyStorageKey = "GoldMirror.profile.residentTaxMonthly"
 
     struct GoldMirrorBackup: Codable {
         let schemaVersion: Int
         let exportedAt: Date
+        var profileSettings: ProfileSettingsBackup?
         var fixedCosts: [FixedCost]
         var subscriptions: [Subscription]
         var bankAccounts: [BankAccount]
@@ -22,6 +35,65 @@ final class DataManager: ObservableObject {
         var cardPaymentSchedules: [CardPaymentSchedule]
         var expenseCategories: [Category]
         var transactions: [Transaction]
+    }
+
+    struct ProfileSettingsBackup: Codable {
+        var displayName: String
+        var tagline: String
+        var isPublicOnMirror: Bool
+        var gender: String
+        var age: Int
+        var prefecture: String
+        var email: String
+        var standardMonthlyRemuneration: Double
+        var dependentsCount: Int
+        var incomeTaxCategory: String
+        var residentTaxAnnual: Double
+        var residentTaxMonthly: Double
+
+        init(
+            displayName: String,
+            tagline: String,
+            isPublicOnMirror: Bool,
+            gender: String,
+            age: Int,
+            prefecture: String,
+            email: String,
+            standardMonthlyRemuneration: Double,
+            dependentsCount: Int,
+            incomeTaxCategory: String,
+            residentTaxAnnual: Double,
+            residentTaxMonthly: Double
+        ) {
+            self.displayName = displayName
+            self.tagline = tagline
+            self.isPublicOnMirror = isPublicOnMirror
+            self.gender = gender
+            self.age = age
+            self.prefecture = prefecture
+            self.email = email
+            self.standardMonthlyRemuneration = standardMonthlyRemuneration
+            self.dependentsCount = dependentsCount
+            self.incomeTaxCategory = incomeTaxCategory
+            self.residentTaxAnnual = residentTaxAnnual
+            self.residentTaxMonthly = residentTaxMonthly
+        }
+
+        init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            displayName = try container.decodeIfPresent(String.self, forKey: .displayName) ?? "Gold Mirror User"
+            tagline = try container.decodeIfPresent(String.self, forKey: .tagline) ?? "資産形成を楽しもう"
+            isPublicOnMirror = try container.decodeIfPresent(Bool.self, forKey: .isPublicOnMirror) ?? false
+            gender = try container.decodeIfPresent(String.self, forKey: .gender) ?? "未設定"
+            age = try container.decodeIfPresent(Int.self, forKey: .age) ?? 0
+            prefecture = try container.decodeIfPresent(String.self, forKey: .prefecture) ?? "未設定"
+            email = try container.decodeIfPresent(String.self, forKey: .email) ?? ""
+            standardMonthlyRemuneration = try container.decodeIfPresent(Double.self, forKey: .standardMonthlyRemuneration) ?? 0
+            dependentsCount = try container.decodeIfPresent(Int.self, forKey: .dependentsCount) ?? 0
+            incomeTaxCategory = try container.decodeIfPresent(String.self, forKey: .incomeTaxCategory) ?? "甲"
+            residentTaxAnnual = try container.decodeIfPresent(Double.self, forKey: .residentTaxAnnual) ?? 0
+            residentTaxMonthly = try container.decodeIfPresent(Double.self, forKey: .residentTaxMonthly) ?? 0
+        }
     }
 
     // ─────────────────────────────────────────
@@ -343,6 +415,7 @@ final class DataManager: ObservableObject {
         let backup = GoldMirrorBackup(
             schemaVersion: Self.backupSchemaVersion,
             exportedAt: Date(),
+            profileSettings: currentProfileSettingsBackup(),
             fixedCosts: fixedCosts,
             subscriptions: subscriptions,
             bankAccounts: bankAccounts,
@@ -365,6 +438,9 @@ final class DataManager: ObservableObject {
         let backup = try decoder.decode(GoldMirrorBackup.self, from: data)
 
         objectWillChange.send()
+        if let profileSettings = backup.profileSettings {
+            restoreProfileSettings(profileSettings)
+        }
         fixedCosts = backup.fixedCosts
         subscriptions = backup.subscriptions
         bankAccounts = backup.bankAccounts
@@ -377,6 +453,40 @@ final class DataManager: ObservableObject {
         transactions = backup.transactions
         saveExpenseCategories()
         syncAllCreditCardBillingAmounts()
+    }
+
+    private func currentProfileSettingsBackup() -> ProfileSettingsBackup {
+        let defaults = UserDefaults.standard
+        let isPublic = defaults.object(forKey: Self.profileIsPublicStorageKey) as? Bool ?? false
+        return ProfileSettingsBackup(
+            displayName: defaults.string(forKey: Self.profileDisplayNameStorageKey) ?? "Gold Mirror User",
+            tagline: defaults.string(forKey: Self.profileTaglineStorageKey) ?? "資産形成を楽しもう",
+            isPublicOnMirror: isPublic,
+            gender: defaults.string(forKey: Self.profileGenderStorageKey) ?? "未設定",
+            age: defaults.object(forKey: Self.profileAgeStorageKey) as? Int ?? 0,
+            prefecture: defaults.string(forKey: Self.profilePrefectureStorageKey) ?? "未設定",
+            email: defaults.string(forKey: Self.profileEmailStorageKey) ?? "",
+            standardMonthlyRemuneration: defaults.object(forKey: Self.profileStandardMonthlyRemunerationStorageKey) as? Double ?? 0,
+            dependentsCount: defaults.object(forKey: Self.profileDependentsCountStorageKey) as? Int ?? 0,
+            incomeTaxCategory: defaults.string(forKey: Self.profileIncomeTaxCategoryStorageKey) ?? "甲",
+            residentTaxAnnual: defaults.object(forKey: Self.profileResidentTaxAnnualStorageKey) as? Double ?? 0,
+            residentTaxMonthly: defaults.object(forKey: Self.profileResidentTaxMonthlyStorageKey) as? Double ?? 0
+        )
+    }
+
+    private func restoreProfileSettings(_ profile: ProfileSettingsBackup) {
+        UserDefaults.standard.set(profile.displayName, forKey: Self.profileDisplayNameStorageKey)
+        UserDefaults.standard.set(profile.tagline, forKey: Self.profileTaglineStorageKey)
+        UserDefaults.standard.set(profile.isPublicOnMirror, forKey: Self.profileIsPublicStorageKey)
+        UserDefaults.standard.set(profile.gender, forKey: Self.profileGenderStorageKey)
+        UserDefaults.standard.set(profile.age, forKey: Self.profileAgeStorageKey)
+        UserDefaults.standard.set(profile.prefecture, forKey: Self.profilePrefectureStorageKey)
+        UserDefaults.standard.set(profile.email, forKey: Self.profileEmailStorageKey)
+        UserDefaults.standard.set(profile.standardMonthlyRemuneration, forKey: Self.profileStandardMonthlyRemunerationStorageKey)
+        UserDefaults.standard.set(profile.dependentsCount, forKey: Self.profileDependentsCountStorageKey)
+        UserDefaults.standard.set(profile.incomeTaxCategory, forKey: Self.profileIncomeTaxCategoryStorageKey)
+        UserDefaults.standard.set(profile.residentTaxAnnual, forKey: Self.profileResidentTaxAnnualStorageKey)
+        UserDefaults.standard.set(profile.residentTaxMonthly, forKey: Self.profileResidentTaxMonthlyStorageKey)
     }
 
     private func loadExpenseCategories() {

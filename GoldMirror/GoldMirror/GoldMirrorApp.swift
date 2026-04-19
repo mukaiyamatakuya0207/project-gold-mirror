@@ -16,6 +16,7 @@ struct GoldMirrorApp: App {
                 .environmentObject(dataManager)
                 .environmentObject(ocrViewModel)
                 .environmentObject(securityManager)
+                .fontCustom()
                 .preferredColorScheme(.dark)
                 .tint(Color.gmGold)
                 .task {

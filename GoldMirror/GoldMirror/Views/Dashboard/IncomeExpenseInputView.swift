@@ -1082,7 +1082,7 @@ struct StableAmountTextField: UIViewRepresentable {
         textField.textAlignment = .left
         textField.textColor = UIColor(Color.gmTextPrimary)
         textField.tintColor = tintColor
-        textField.font = UIFont.systemFont(ofSize: 42, weight: .bold)
+        textField.font = UIFont(name: GMFont.latinFontName, size: 42) ?? UIFont.boldSystemFont(ofSize: 42)
         textField.adjustsFontSizeToFitWidth = true
         textField.minimumFontSize = 24
         textField.placeholder = "0"

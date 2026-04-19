@@ -10,9 +10,18 @@ struct SettingsView: View {
     @StateObject private var nm = NotificationManager.shared
 
     @State private var showProfileEdit = false
-    @State private var displayName     = "Gold Mirror User"
-    @State private var tagline         = "資産形成を楽しもう"
-    @State private var isPublic        = false
+    @AppStorage(DataManager.profileDisplayNameStorageKey) private var displayName = "Gold Mirror User"
+    @AppStorage(DataManager.profileTaglineStorageKey) private var tagline = "資産形成を楽しもう"
+    @AppStorage(DataManager.profileIsPublicStorageKey) private var isPublic = false
+    @AppStorage(DataManager.profileGenderStorageKey) private var gender = "未設定"
+    @AppStorage(DataManager.profileAgeStorageKey) private var age = 0
+    @AppStorage(DataManager.profilePrefectureStorageKey) private var prefecture = "未設定"
+    @AppStorage(DataManager.profileEmailStorageKey) private var email = ""
+    @AppStorage(DataManager.profileStandardMonthlyRemunerationStorageKey) private var standardMonthlyRemuneration = 0.0
+    @AppStorage(DataManager.profileDependentsCountStorageKey) private var dependentsCount = 0
+    @AppStorage(DataManager.profileIncomeTaxCategoryStorageKey) private var incomeTaxCategory = "甲"
+    @AppStorage(DataManager.profileResidentTaxAnnualStorageKey) private var residentTaxAnnual = 0.0
+    @AppStorage(DataManager.profileResidentTaxMonthlyStorageKey) private var residentTaxMonthly = 0.0
     @State private var showDataExporter = false
     @State private var showDataImporter = false
     @State private var exportDocument = GoldMirrorDataDocument()
@@ -293,7 +302,19 @@ struct SettingsView: View {
         .toolbar(.hidden, for: .navigationBar)
         .toolbarBackground(.hidden, for: .navigationBar)
         .sheet(isPresented: $showProfileEdit) {
-            ProfileEditSheet(displayName: $displayName, tagline: $tagline)
+            ProfileEditSheet(
+                displayName: $displayName,
+                tagline: $tagline,
+                gender: $gender,
+                age: $age,
+                prefecture: $prefecture,
+                email: $email,
+                standardMonthlyRemuneration: $standardMonthlyRemuneration,
+                dependentsCount: $dependentsCount,
+                incomeTaxCategory: $incomeTaxCategory,
+                residentTaxAnnual: $residentTaxAnnual,
+                residentTaxMonthly: $residentTaxMonthly
+            )
         }
         .overlay(alignment: .top) {
             SettingsPageHeader()
@@ -677,72 +698,173 @@ struct GMSettingsDivider: View {
 struct ProfileEditSheet: View {
     @Binding var displayName: String
     @Binding var tagline: String
+    @Binding var gender: String
+    @Binding var age: Int
+    @Binding var prefecture: String
+    @Binding var email: String
+    @Binding var standardMonthlyRemuneration: Double
+    @Binding var dependentsCount: Int
+    @Binding var incomeTaxCategory: String
+    @Binding var residentTaxAnnual: Double
+    @Binding var residentTaxMonthly: Double
     @Environment(\.dismiss) private var dismiss
 
     @State private var localName: String    = ""
     @State private var localTagline: String = ""
+    @State private var localGender: String = "未設定"
+    @State private var localAgeText: String = ""
+    @State private var localPrefecture: String = "未設定"
+    @State private var localEmail: String = ""
+    @State private var localStandardMonthlyRemunerationText: String = ""
+    @State private var localDependentsCountText: String = ""
+    @State private var localIncomeTaxCategory: String = "甲"
+    @State private var localResidentTaxAnnualText: String = ""
+    @State private var localResidentTaxMonthlyText: String = ""
+
+    private let genders = ["未設定", "女性", "男性", "その他", "回答しない"]
+    private let incomeTaxCategories = ["甲", "乙"]
+    private let prefectures = [
+        "未設定", "北海道", "青森県", "岩手県", "宮城県", "秋田県", "山形県", "福島県",
+        "茨城県", "栃木県", "群馬県", "埼玉県", "千葉県", "東京都", "神奈川県",
+        "新潟県", "富山県", "石川県", "福井県", "山梨県", "長野県", "岐阜県",
+        "静岡県", "愛知県", "三重県", "滋賀県", "京都府", "大阪府", "兵庫県",
+        "奈良県", "和歌山県", "鳥取県", "島根県", "岡山県", "広島県", "山口県",
+        "徳島県", "香川県", "愛媛県", "高知県", "福岡県", "佐賀県", "長崎県",
+        "熊本県", "大分県", "宮崎県", "鹿児島県", "沖縄県"
+    ]
 
     var body: some View {
         NavigationStack {
             ZStack {
                 Color.gmBackground.ignoresSafeArea()
 
-                VStack(spacing: GMSpacing.lg) {
-                    // Avatar preview
-                    ZStack {
-                        Circle()
-                            .fill(LinearGradient(
-                                colors: [Color.gmGoldDim, Color.gmGold],
-                                startPoint: .topLeading, endPoint: .bottomTrailing
-                            ))
-                            .frame(width: 80, height: 80)
-                        Text(String(localName.prefix(1).uppercased()))
-                            .font(GMFont.display(36, weight: .bold))
-                            .foregroundStyle(Color.gmBackground)
-                    }
-                    .gmGoldGlow(radius: 14, opacity: 0.4)
-                    .padding(.top, GMSpacing.xl)
+                ScrollView(showsIndicators: false) {
+                    VStack(spacing: GMSpacing.lg) {
+                        ZStack {
+                            Circle()
+                                .fill(LinearGradient(
+                                    colors: [Color.gmGoldDim, Color.gmGold],
+                                    startPoint: .topLeading, endPoint: .bottomTrailing
+                                ))
+                                .frame(width: 80, height: 80)
+                            Text(String(localName.prefix(1).uppercased()))
+                                .font(GMFont.display(36, weight: .bold))
+                                .foregroundStyle(Color.gmBackground)
+                        }
+                        .gmGoldGlow(radius: 14, opacity: 0.4)
+                        .padding(.top, GMSpacing.xl)
 
-                    VStack(spacing: GMSpacing.md) {
-                        GMInputSection(title: "表示名", icon: "person.fill") {
-                            TextField("名前を入力", text: $localName)
-                                .font(GMFont.body(15))
-                                .foregroundStyle(Color.gmTextPrimary)
+                        VStack(spacing: GMSpacing.md) {
+                            GMInputSection(title: "表示名", icon: "person.fill") {
+                                TextField("名前を入力", text: $localName)
+                                    .font(GMFont.body(15))
+                                    .foregroundStyle(Color.gmTextPrimary)
+                                    .tint(Color.gmGold)
+                            }
+
+                            GMInputSection(title: "自己紹介", icon: "text.quote") {
+                                TextField("一言メッセージ", text: $localTagline)
+                                    .font(GMFont.body(15))
+                                    .foregroundStyle(Color.gmTextPrimary)
+                                    .tint(Color.gmGold)
+                            }
+
+                            GMInputSection(title: "性別", icon: "person.2.fill") {
+                                Picker("性別", selection: $localGender) {
+                                    ForEach(genders, id: \.self) { Text($0).tag($0) }
+                                }
+                                .pickerStyle(.menu)
                                 .tint(Color.gmGold)
+                            }
+
+                            GMInputSection(title: "年齢", icon: "calendar") {
+                                TextField("年齢", text: $localAgeText)
+                                    .font(GMFont.body(15))
+                                    .foregroundStyle(Color.gmTextPrimary)
+                                    .keyboardType(.numberPad)
+                                    .tint(Color.gmGold)
+                            }
+
+                            GMInputSection(title: "居住地", icon: "mappin.and.ellipse") {
+                                Picker("都道府県", selection: $localPrefecture) {
+                                    ForEach(prefectures, id: \.self) { Text($0).tag($0) }
+                                }
+                                .pickerStyle(.menu)
+                                .tint(Color.gmGold)
+                            }
+
+                            GMInputSection(title: "メールアドレス", icon: "envelope.fill") {
+                                TextField("name@example.com", text: $localEmail)
+                                    .font(GMFont.body(15))
+                                    .foregroundStyle(Color.gmTextPrimary)
+                                    .keyboardType(.emailAddress)
+                                    .textInputAutocapitalization(.never)
+                                    .autocorrectionDisabled()
+                                    .tint(Color.gmGold)
+                            }
+
+                            GMInputSection(title: "標準報酬月額", icon: "yensign.circle.fill") {
+                                TextField("健康保険・厚生年金の標準報酬月額", text: $localStandardMonthlyRemunerationText)
+                                    .font(GMFont.body(15))
+                                    .foregroundStyle(Color.gmTextPrimary)
+                                    .keyboardType(.numberPad)
+                                    .tint(Color.gmGold)
+                            }
+
+                            GMInputSection(title: "扶養親族の数", icon: "person.3.fill") {
+                                TextField("0", text: $localDependentsCountText)
+                                    .font(GMFont.body(15))
+                                    .foregroundStyle(Color.gmTextPrimary)
+                                    .keyboardType(.numberPad)
+                                    .tint(Color.gmGold)
+                            }
+
+                            GMInputSection(title: "所得税区分", icon: "doc.text.fill") {
+                                Picker("所得税区分", selection: $localIncomeTaxCategory) {
+                                    ForEach(incomeTaxCategories, id: \.self) { Text($0).tag($0) }
+                                }
+                                .pickerStyle(.segmented)
+                                .tint(Color.gmGold)
+                            }
+
+                            GMInputSection(title: "住民税（年額）", icon: "building.columns.fill") {
+                                TextField("0", text: $localResidentTaxAnnualText)
+                                    .font(GMFont.body(15))
+                                    .foregroundStyle(Color.gmTextPrimary)
+                                    .keyboardType(.numberPad)
+                                    .tint(Color.gmGold)
+                            }
+
+                            GMInputSection(title: "住民税（月額）", icon: "calendar.badge.clock") {
+                                TextField("0", text: $localResidentTaxMonthlyText)
+                                    .font(GMFont.body(15))
+                                    .foregroundStyle(Color.gmTextPrimary)
+                                    .keyboardType(.numberPad)
+                                    .tint(Color.gmGold)
+                            }
                         }
                         .padding(.horizontal, GMSpacing.md)
 
-                        GMInputSection(title: "自己紹介", icon: "text.quote") {
-                            TextField("一言メッセージ", text: $localTagline)
-                                .font(GMFont.body(15))
-                                .foregroundStyle(Color.gmTextPrimary)
-                                .tint(Color.gmGold)
+                        Button {
+                            save()
+                        } label: {
+                            Text("保存する")
+                                .font(GMFont.heading(16, weight: .bold))
+                                .foregroundStyle(Color.gmBackground)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 16)
+                                .background(LinearGradient(
+                                    colors: [Color.gmGoldLight, Color.gmGold],
+                                    startPoint: .topLeading, endPoint: .bottomTrailing
+                                ))
+                                .clipShape(RoundedRectangle(cornerRadius: GMRadius.lg))
+                                .shadow(color: Color.gmGold.opacity(0.4), radius: 10, x: 0, y: 4)
                         }
                         .padding(.horizontal, GMSpacing.md)
+                        .padding(.bottom, GMSpacing.xl)
                     }
-
-                    Spacer()
-
-                    Button {
-                        displayName = localName
-                        tagline     = localTagline
-                        dismiss()
-                    } label: {
-                        Text("保存する")
-                            .font(GMFont.heading(16, weight: .bold))
-                            .foregroundStyle(Color.gmBackground)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 16)
-                            .background(LinearGradient(
-                                colors: [Color.gmGoldLight, Color.gmGold],
-                                startPoint: .topLeading, endPoint: .bottomTrailing
-                            ))
-                            .clipShape(RoundedRectangle(cornerRadius: GMRadius.lg))
-                            .shadow(color: Color.gmGold.opacity(0.4), radius: 10, x: 0, y: 4)
-                    }
-                    .padding(.horizontal, GMSpacing.md)
-                    .padding(.bottom, GMSpacing.xl)
                 }
+                .scrollDismissesKeyboard(.interactively)
             }
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -761,12 +883,40 @@ struct ProfileEditSheet: View {
             }
         }
         .onAppear {
-            localName    = displayName
-            localTagline = tagline
+            populate()
         }
-        .presentationDetents([.medium, .large])
+        .presentationDetents([.large])
         .presentationDragIndicator(.visible)
         .presentationBackground(Color.gmBackground)
+    }
+
+    private func populate() {
+        localName = displayName
+        localTagline = tagline
+        localGender = gender
+        localAgeText = age > 0 ? "\(age)" : ""
+        localPrefecture = prefecture
+        localEmail = email
+        localStandardMonthlyRemunerationText = standardMonthlyRemuneration > 0 ? "\(Int(standardMonthlyRemuneration))" : ""
+        localDependentsCountText = dependentsCount > 0 ? "\(dependentsCount)" : ""
+        localIncomeTaxCategory = incomeTaxCategory
+        localResidentTaxAnnualText = residentTaxAnnual > 0 ? "\(Int(residentTaxAnnual))" : ""
+        localResidentTaxMonthlyText = residentTaxMonthly > 0 ? "\(Int(residentTaxMonthly))" : ""
+    }
+
+    private func save() {
+        displayName = localName.trimmingCharacters(in: .whitespacesAndNewlines)
+        tagline = localTagline.trimmingCharacters(in: .whitespacesAndNewlines)
+        gender = localGender
+        age = Int(localAgeText.replacingOccurrences(of: ",", with: "")) ?? 0
+        prefecture = localPrefecture
+        email = localEmail.trimmingCharacters(in: .whitespacesAndNewlines)
+        standardMonthlyRemuneration = Double(localStandardMonthlyRemunerationText.replacingOccurrences(of: ",", with: "")) ?? 0
+        dependentsCount = Int(localDependentsCountText.replacingOccurrences(of: ",", with: "")) ?? 0
+        incomeTaxCategory = localIncomeTaxCategory
+        residentTaxAnnual = Double(localResidentTaxAnnualText.replacingOccurrences(of: ",", with: "")) ?? 0
+        residentTaxMonthly = Double(localResidentTaxMonthlyText.replacingOccurrences(of: ",", with: "")) ?? 0
+        dismiss()
     }
 }
 

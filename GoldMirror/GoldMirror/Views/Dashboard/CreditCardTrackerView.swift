@@ -289,10 +289,14 @@ struct PaymentScheduleRow: View {
             }
 
             VStack(alignment: .leading, spacing: 3) {
-                Text(schedule.title)
+                Text(cardName)
                     .font(GMFont.body(14, weight: .semibold))
                     .foregroundStyle(Color.gmTextPrimary)
-                Text("\(cardName) / \(schedule.paymentDate.japaneseDateString)")
+                Text(schedule.title)
+                    .font(GMFont.caption(11))
+                    .foregroundStyle(Color.gmTextTertiary)
+                    .lineLimit(1)
+                Text(schedule.paymentDate.japaneseDateString)
                     .font(GMFont.caption(11))
                     .foregroundStyle(Color.gmTextTertiary)
                     .lineLimit(1)
