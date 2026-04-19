@@ -5,6 +5,7 @@ import SwiftUI
 
 enum CategorySemantic: String, Codable {
     case normal
+    case businessExpense
     case assetAdjustment
 }
 
@@ -23,6 +24,10 @@ struct Category: Identifiable, Codable, Equatable {
         semantic == .assetAdjustment
     }
 
+    var isBusinessExpense: Bool {
+        semantic == .businessExpense
+    }
+
     init(
         id: UUID = UUID(),
         name: String,
@@ -39,6 +44,13 @@ struct Category: Identifiable, Codable, Equatable {
 }
 
 extension Category {
+    static let companyExpenseCategory = Category(
+        name: "会社経費",
+        iconName: "briefcase.fill",
+        colorHex: "#D4AF37",
+        semantic: .businessExpense
+    )
+
     static let defaultExpenseCategories: [Category] = [
         Category(name: "食費", iconName: "fork.knife", colorHex: "#FF8A65"),
         Category(name: "交通費", iconName: "train.side.front.car", colorHex: "#4FC3F7"),
@@ -58,6 +70,7 @@ extension Category {
         Category(name: "保険", iconName: "shield.fill", colorHex: "#81C784"),
         Category(name: "貯蓄", iconName: "banknote.fill", colorHex: "#4CAF50"),
         Category(name: "資産評価換え", iconName: "chart.line.downtrend.xyaxis", colorHex: "#B86BFF", semantic: .assetAdjustment),
+        Category.companyExpenseCategory,
         Category(name: "その他支出", iconName: "ellipsis.circle.fill", colorHex: "#A8A8A8")
     ]
 }

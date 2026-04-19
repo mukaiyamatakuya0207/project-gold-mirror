@@ -22,6 +22,10 @@ final class DataManager: ObservableObject {
     nonisolated static let profileIncomeTaxCategoryStorageKey = "GoldMirror.profile.incomeTaxCategory"
     nonisolated static let profileResidentTaxAnnualStorageKey = "GoldMirror.profile.residentTaxAnnual"
     nonisolated static let profileResidentTaxMonthlyStorageKey = "GoldMirror.profile.residentTaxMonthly"
+    nonisolated static let profileBaseMonthlySalaryStorageKey = "GoldMirror.profile.baseMonthlySalary"
+    nonisolated static let profileFixedOvertimePayStorageKey = "GoldMirror.profile.fixedOvertimePay"
+    nonisolated static let profileFixedOvertimeHoursStorageKey = "GoldMirror.profile.fixedOvertimeHours"
+    nonisolated static let profileNonTaxableAllowanceStorageKey = "GoldMirror.profile.nonTaxableAllowance"
 
     struct GoldMirrorBackup: Codable {
         let schemaVersion: Int
@@ -50,6 +54,10 @@ final class DataManager: ObservableObject {
         var incomeTaxCategory: String
         var residentTaxAnnual: Double
         var residentTaxMonthly: Double
+        var baseMonthlySalary: Double
+        var fixedOvertimePay: Double
+        var fixedOvertimeHours: Double
+        var nonTaxableAllowance: Double
 
         init(
             displayName: String,
@@ -63,7 +71,11 @@ final class DataManager: ObservableObject {
             dependentsCount: Int,
             incomeTaxCategory: String,
             residentTaxAnnual: Double,
-            residentTaxMonthly: Double
+            residentTaxMonthly: Double,
+            baseMonthlySalary: Double,
+            fixedOvertimePay: Double,
+            fixedOvertimeHours: Double,
+            nonTaxableAllowance: Double
         ) {
             self.displayName = displayName
             self.tagline = tagline
@@ -77,6 +89,10 @@ final class DataManager: ObservableObject {
             self.incomeTaxCategory = incomeTaxCategory
             self.residentTaxAnnual = residentTaxAnnual
             self.residentTaxMonthly = residentTaxMonthly
+            self.baseMonthlySalary = baseMonthlySalary
+            self.fixedOvertimePay = fixedOvertimePay
+            self.fixedOvertimeHours = fixedOvertimeHours
+            self.nonTaxableAllowance = nonTaxableAllowance
         }
 
         init(from decoder: Decoder) throws {
@@ -93,7 +109,103 @@ final class DataManager: ObservableObject {
             incomeTaxCategory = try container.decodeIfPresent(String.self, forKey: .incomeTaxCategory) ?? "甲"
             residentTaxAnnual = try container.decodeIfPresent(Double.self, forKey: .residentTaxAnnual) ?? 0
             residentTaxMonthly = try container.decodeIfPresent(Double.self, forKey: .residentTaxMonthly) ?? 0
+            baseMonthlySalary = try container.decodeIfPresent(Double.self, forKey: .baseMonthlySalary) ?? 0
+            fixedOvertimePay = try container.decodeIfPresent(Double.self, forKey: .fixedOvertimePay) ?? 0
+            fixedOvertimeHours = try container.decodeIfPresent(Double.self, forKey: .fixedOvertimeHours) ?? 0
+            nonTaxableAllowance = try container.decodeIfPresent(Double.self, forKey: .nonTaxableAllowance) ?? 0
         }
+    }
+
+    struct SalaryCalculationResult {
+        let baseMonthlySalary: Double
+        let fixedOvertimePay: Double
+        let nonTaxableAllowance: Double
+        let hourlyRate: Double
+        let overtimeHours: Double
+        let lateNightHours: Double
+        let additionalOvertimePay: Double
+        let lateNightAllowance: Double
+        let healthInsurancePremium: Double
+        let welfarePensionPremium: Double
+        let estimatedIncomeTax: Double
+        let residentTaxMonthly: Double
+        let grossPay: Double
+        let totalDeductions: Double
+        let estimatedNetPay: Double
+    }
+
+    struct ExpenseCategoryReportItem: Identifiable {
+        let id: String
+        let name: String
+        let iconName: String
+        let colorHex: String
+        let amount: Double
+        let previousAmount: Double
+        let averageAmount: Double
+        let reimbursableAmount: Double
+        let percentOfTotal: Double
+
+        var monthOverMonthRate: Double {
+            guard previousAmount > 0 else { return amount > 0 ? 1 : 0 }
+            return (amount - previousAmount) / previousAmount
+        }
+
+        var averageComparisonRate: Double {
+            guard averageAmount > 0 else { return amount > 0 ? 1 : 0 }
+            return (amount - averageAmount) / averageAmount
+        }
+    }
+
+    struct MonthlyCashflowReportItem: Identifiable {
+        let id: Date
+        let month: Date
+        let income: Double
+        let expense: Double
+        let reimbursableExpense: Double
+    }
+
+    struct FixedVariableReport {
+        let fixedExpense: Double
+        let variableExpense: Double
+
+        var total: Double { fixedExpense + variableExpense }
+        var fixedRatio: Double { total > 0 ? fixedExpense / total : 0 }
+        var variableRatio: Double { total > 0 ? variableExpense / total : 0 }
+    }
+
+    struct IncomeBreakdownReportItem: Identifiable {
+        let id: String
+        let name: String
+        let iconName: String
+        let colorHex: String
+        let amount: Double
+
+        var percentOfTotal: Double = 0
+    }
+
+    struct MonthlyIncomeReportItem: Identifiable {
+        let id: Date
+        let month: Date
+        let salary: Double
+        let bonus: Double
+        let investment: Double
+        let other: Double
+
+        var total: Double { salary + bonus + investment + other }
+    }
+
+    struct MonthlyExpenseTrendItem: Identifiable {
+        let id: Date
+        let month: Date
+        let expense: Double
+        let reimbursableExpense: Double
+    }
+
+    struct AnnualIncomeProjectionReport {
+        let averageMonthlyIncome: Double
+        let projectedAnnualIncome: Double
+        let bonusIncluded: Double
+        let monthsAnalyzed: Int
     }
 
     // ─────────────────────────────────────────
@@ -184,6 +296,108 @@ final class DataManager: ObservableObject {
     /// 年間サブスク合計
     var totalAnnualSubscriptions: Double {
         subscriptions.filter { $0.isActive }.reduce(0) { $0 + $1.annualCost }
+    }
+
+    // ─────────────────────────────────────────
+    // MARK: Salary / Tax Estimation
+    // ─────────────────────────────────────────
+    func additionalWagesFromProfile(
+        overtimeHours: Double,
+        lateNightHours: Double,
+        overtimeRate: Double = 0.25,
+        lateNightRate: Double = 0.25
+    ) -> (additionalOvertimePay: Double, lateNightAllowance: Double) {
+        let result = salaryEstimateFromProfile(
+            overtimeHours: overtimeHours,
+            lateNightHours: lateNightHours,
+            overtimeRate: overtimeRate,
+            lateNightRate: lateNightRate
+        )
+        return (result.additionalOvertimePay, result.lateNightAllowance)
+    }
+
+    func salaryEstimateFromProfile(
+        overtimeHours: Double = 0,
+        lateNightHours: Double = 0,
+        overtimeRate: Double = 0.25,
+        lateNightRate: Double = 0.25
+    ) -> SalaryCalculationResult {
+        let profile = currentProfileSettingsBackup()
+        return salaryEstimate(
+            baseMonthlySalary: profile.baseMonthlySalary,
+            fixedOvertimePay: profile.fixedOvertimePay,
+            fixedOvertimeHours: profile.fixedOvertimeHours,
+            nonTaxableAllowance: profile.nonTaxableAllowance,
+            standardMonthlyRemuneration: profile.standardMonthlyRemuneration,
+            dependentsCount: profile.dependentsCount,
+            incomeTaxCategory: profile.incomeTaxCategory,
+            residentTaxAnnual: profile.residentTaxAnnual,
+            residentTaxMonthly: profile.residentTaxMonthly,
+            prefecture: profile.prefecture,
+            overtimeHours: overtimeHours,
+            lateNightHours: lateNightHours,
+            overtimeRate: overtimeRate,
+            lateNightRate: lateNightRate
+        )
+    }
+
+    func salaryEstimate(
+        baseMonthlySalary: Double,
+        fixedOvertimePay: Double,
+        fixedOvertimeHours: Double,
+        nonTaxableAllowance: Double,
+        standardMonthlyRemuneration: Double,
+        dependentsCount: Int,
+        incomeTaxCategory: String,
+        residentTaxAnnual: Double,
+        residentTaxMonthly: Double,
+        prefecture: String,
+        overtimeHours: Double,
+        lateNightHours: Double,
+        overtimeRate: Double = 0.25,
+        lateNightRate: Double = 0.25
+    ) -> SalaryCalculationResult {
+        let assumedMonthlyWorkingHours = 160.0
+        let hourlyRate = (baseMonthlySalary + fixedOvertimePay) / assumedMonthlyWorkingHours
+        let excessOvertimeHours = max(0, overtimeHours - fixedOvertimeHours)
+        let additionalOvertimePay = hourlyRate * (1 + overtimeRate) * excessOvertimeHours
+        let lateNightAllowance = hourlyRate * lateNightRate * max(0, lateNightHours)
+        let healthInsurancePremium = standardMonthlyRemuneration * healthInsuranceEmployeeRate(for: prefecture)
+        let welfarePensionPremium = standardMonthlyRemuneration * 0.0915
+        let monthlyResidentTax = residentTaxMonthly > 0 ? residentTaxMonthly : residentTaxAnnual / 12
+        let grossPay = baseMonthlySalary + fixedOvertimePay + nonTaxableAllowance + additionalOvertimePay + lateNightAllowance
+        let socialInsuranceTotal = healthInsurancePremium + welfarePensionPremium
+        let taxableMonthlyPay = max(0, grossPay - nonTaxableAllowance - socialInsuranceTotal - Double(max(0, dependentsCount)) * 31_667)
+        let incomeTaxRate = incomeTaxCategory == "乙" ? 0.1021 : 0.05105
+        let estimatedIncomeTax = taxableMonthlyPay * incomeTaxRate
+        let totalDeductions = socialInsuranceTotal + estimatedIncomeTax + monthlyResidentTax
+        let estimatedNetPay = max(0, grossPay - totalDeductions)
+
+        return SalaryCalculationResult(
+            baseMonthlySalary: baseMonthlySalary,
+            fixedOvertimePay: fixedOvertimePay,
+            nonTaxableAllowance: nonTaxableAllowance,
+            hourlyRate: hourlyRate,
+            overtimeHours: overtimeHours,
+            lateNightHours: lateNightHours,
+            additionalOvertimePay: additionalOvertimePay,
+            lateNightAllowance: lateNightAllowance,
+            healthInsurancePremium: healthInsurancePremium,
+            welfarePensionPremium: welfarePensionPremium,
+            estimatedIncomeTax: estimatedIncomeTax,
+            residentTaxMonthly: monthlyResidentTax,
+            grossPay: grossPay,
+            totalDeductions: totalDeductions,
+            estimatedNetPay: estimatedNetPay
+        )
+    }
+
+    private func healthInsuranceEmployeeRate(for prefecture: String) -> Double {
+        let placeholderRates: [String: Double] = [
+            "北海道": 0.0510, "東京都": 0.04955, "神奈川県": 0.0501,
+            "愛知県": 0.0501, "大阪府": 0.0517, "福岡県": 0.0518, "沖縄県": 0.0476
+        ]
+        return placeholderRates[prefecture] ?? 0.05
     }
 
     // ─────────────────────────────────────────
@@ -470,7 +684,11 @@ final class DataManager: ObservableObject {
             dependentsCount: defaults.object(forKey: Self.profileDependentsCountStorageKey) as? Int ?? 0,
             incomeTaxCategory: defaults.string(forKey: Self.profileIncomeTaxCategoryStorageKey) ?? "甲",
             residentTaxAnnual: defaults.object(forKey: Self.profileResidentTaxAnnualStorageKey) as? Double ?? 0,
-            residentTaxMonthly: defaults.object(forKey: Self.profileResidentTaxMonthlyStorageKey) as? Double ?? 0
+            residentTaxMonthly: defaults.object(forKey: Self.profileResidentTaxMonthlyStorageKey) as? Double ?? 0,
+            baseMonthlySalary: defaults.object(forKey: Self.profileBaseMonthlySalaryStorageKey) as? Double ?? 0,
+            fixedOvertimePay: defaults.object(forKey: Self.profileFixedOvertimePayStorageKey) as? Double ?? 0,
+            fixedOvertimeHours: defaults.object(forKey: Self.profileFixedOvertimeHoursStorageKey) as? Double ?? 0,
+            nonTaxableAllowance: defaults.object(forKey: Self.profileNonTaxableAllowanceStorageKey) as? Double ?? 0
         )
     }
 
@@ -487,6 +705,10 @@ final class DataManager: ObservableObject {
         UserDefaults.standard.set(profile.incomeTaxCategory, forKey: Self.profileIncomeTaxCategoryStorageKey)
         UserDefaults.standard.set(profile.residentTaxAnnual, forKey: Self.profileResidentTaxAnnualStorageKey)
         UserDefaults.standard.set(profile.residentTaxMonthly, forKey: Self.profileResidentTaxMonthlyStorageKey)
+        UserDefaults.standard.set(profile.baseMonthlySalary, forKey: Self.profileBaseMonthlySalaryStorageKey)
+        UserDefaults.standard.set(profile.fixedOvertimePay, forKey: Self.profileFixedOvertimePayStorageKey)
+        UserDefaults.standard.set(profile.fixedOvertimeHours, forKey: Self.profileFixedOvertimeHoursStorageKey)
+        UserDefaults.standard.set(profile.nonTaxableAllowance, forKey: Self.profileNonTaxableAllowanceStorageKey)
     }
 
     private func loadExpenseCategories() {
@@ -496,12 +718,27 @@ final class DataManager: ObservableObject {
             expenseCategories = Category.defaultExpenseCategories
             return
         }
-        expenseCategories = decoded
+        expenseCategories = categoriesWithRequiredDefaults(decoded)
+        saveExpenseCategories()
     }
 
     private func saveExpenseCategories() {
         guard let data = try? JSONEncoder().encode(expenseCategories) else { return }
         UserDefaults.standard.set(data, forKey: Self.expenseCategoriesStorageKey)
+    }
+
+    private func categoriesWithRequiredDefaults(_ categories: [Category]) -> [Category] {
+        guard !categories.contains(where: { $0.name == Category.companyExpenseCategory.name }) else {
+            return categories
+        }
+
+        var merged = categories
+        if let otherIndex = merged.firstIndex(where: { $0.name == "その他支出" }) {
+            merged.insert(Category.companyExpenseCategory, at: otherIndex)
+        } else {
+            merged.append(Category.companyExpenseCategory)
+        }
+        return merged
     }
 
     // ─────────────────────────────────────────
@@ -730,6 +967,241 @@ final class DataManager: ObservableObject {
         }
     }
 
+    func businessExpenseTransactions(
+        in month: Date? = nil,
+        status: ReimbursementStatus? = nil
+    ) -> [Transaction] {
+        let calendar = Self.jpCalendar
+        return transactions.filter { transaction in
+            guard transaction.type == .expense,
+                  transaction.isBusinessExpense == true else { return false }
+            if let month,
+               !calendar.isDate(transaction.date, equalTo: month, toGranularity: .month) {
+                return false
+            }
+            if let status {
+                return transaction.reimbursementStatus == status
+            }
+            return true
+        }
+    }
+
+    func businessExpenseTotal(in month: Date? = nil, status: ReimbursementStatus? = nil) -> Double {
+        businessExpenseTransactions(in: month, status: status).reduce(0) { $0 + $1.amount }
+    }
+
+    func updateReimbursementStatus(for transactionID: UUID, status: ReimbursementStatus) {
+        guard let idx = transactions.firstIndex(where: { $0.id == transactionID }) else { return }
+        transactions[idx].isBusinessExpense = true
+        transactions[idx].reimbursementStatus = status
+    }
+
+    @discardableResult
+    func markBusinessExpensesCompleted(in month: Date, matching amount: Double, tolerance: Double = 1) -> Bool {
+        let candidates = businessExpenseTransactions(in: month).filter { $0.reimbursementStatus != .completed }
+        let total = candidates.reduce(0) { $0 + $1.amount }
+        guard abs(total - amount) <= tolerance else { return false }
+        let ids = Set(candidates.map(\.id))
+        for idx in transactions.indices where ids.contains(transactions[idx].id) {
+            transactions[idx].isBusinessExpense = true
+            transactions[idx].reimbursementStatus = .completed
+        }
+        return true
+    }
+
+    func expenseCategoryReport(in month: Date = Date(), includeReimbursable: Bool = false) -> [ExpenseCategoryReportItem] {
+        let calendar = Self.jpCalendar
+        let monthStart = Self.startOfMonth(for: month, calendar: calendar)
+        let previousMonth = calendar.date(byAdding: .month, value: -1, to: monthStart) ?? monthStart
+        let averageMonths = (1...3).compactMap { calendar.date(byAdding: .month, value: -$0, to: monthStart) }
+        let currentTransactions = reportExpenseTransactions(in: monthStart, includeReimbursable: includeReimbursable)
+        let previousTransactions = reportExpenseTransactions(in: previousMonth, includeReimbursable: includeReimbursable)
+        let total = currentTransactions.reduce(0) { $0 + $1.amount }
+
+        let currentByCategory = groupedExpenseAmounts(currentTransactions)
+        let previousByCategory = groupedExpenseAmounts(previousTransactions)
+        let reimbursableByCategory = groupedExpenseAmounts(reportExpenseTransactions(in: monthStart, includeReimbursable: true).filter(isReimbursableExpense))
+        let averageByCategory = averageMonths.reduce(into: [String: Double]()) { partial, targetMonth in
+            for (key, value) in groupedExpenseAmounts(reportExpenseTransactions(in: targetMonth, includeReimbursable: includeReimbursable)) {
+                partial[key, default: 0] += value / Double(max(averageMonths.count, 1))
+            }
+        }
+
+        return currentByCategory.map { key, amount in
+            let sample = currentTransactions.first { expenseCategoryKey(for: $0) == key }
+                ?? previousTransactions.first { expenseCategoryKey(for: $0) == key }
+            return ExpenseCategoryReportItem(
+                id: key,
+                name: sample?.displayCategoryName ?? key,
+                iconName: sample?.displayCategoryIconName ?? "tag.fill",
+                colorHex: sample?.categoryColorHex ?? "#D4AF37",
+                amount: amount,
+                previousAmount: previousByCategory[key, default: 0],
+                averageAmount: averageByCategory[key, default: 0],
+                reimbursableAmount: reimbursableByCategory[key, default: 0],
+                percentOfTotal: total > 0 ? amount / total : 0
+            )
+        }
+        .sorted { $0.amount > $1.amount }
+    }
+
+    func monthlyCashflowReport(months: Int = 6, includeReimbursable: Bool = false) -> [MonthlyCashflowReportItem] {
+        let calendar = Self.jpCalendar
+        let currentMonth = Self.startOfMonth(for: Date(), calendar: calendar)
+        return stride(from: months - 1, through: 0, by: -1).compactMap { offset in
+            guard let month = calendar.date(byAdding: .month, value: -offset, to: currentMonth) else { return nil }
+            let income = transactions.reduce(0) { total, transaction in
+                guard transaction.type == .income,
+                      calendar.isDate(transaction.date, equalTo: month, toGranularity: .month) else { return total }
+                return total + transaction.amount
+            }
+            let allExpenses = reportExpenseTransactions(in: month, includeReimbursable: true)
+            let reimbursable = allExpenses.filter(isReimbursableExpense).reduce(0) { $0 + $1.amount }
+            let expense = allExpenses.reduce(0) { partial, transaction in
+                if !includeReimbursable && isReimbursableExpense(transaction) { return partial }
+                return partial + transaction.amount
+            }
+            return MonthlyCashflowReportItem(
+                id: month,
+                month: month,
+                income: income,
+                expense: expense,
+                reimbursableExpense: reimbursable
+            )
+        }
+    }
+
+    func monthlyExpenseTrendReport(months: Int = 6, includeReimbursable: Bool = false) -> [MonthlyExpenseTrendItem] {
+        monthlyCashflowReport(months: months, includeReimbursable: includeReimbursable)
+            .map {
+                MonthlyExpenseTrendItem(
+                    id: $0.month,
+                    month: $0.month,
+                    expense: $0.expense,
+                    reimbursableExpense: $0.reimbursableExpense
+                )
+            }
+    }
+
+    func fixedVariableExpenseReport(in month: Date = Date(), includeReimbursable: Bool = false) -> FixedVariableReport {
+        let expenses = reportExpenseTransactions(in: month, includeReimbursable: includeReimbursable)
+        let fixedTransactions = expenses.filter(isFixedExpense)
+        let variableTransactions = expenses.filter { !isFixedExpense($0) }
+        let profileDeductions = salaryEstimateFromProfile().healthInsurancePremium
+            + salaryEstimateFromProfile().welfarePensionPremium
+            + salaryEstimateFromProfile().residentTaxMonthly
+        let recurringFixed = totalMonthlyFixedCosts + totalMonthlySubscriptions
+        return FixedVariableReport(
+            fixedExpense: fixedTransactions.reduce(0) { $0 + $1.amount } + recurringFixed + profileDeductions,
+            variableExpense: variableTransactions.reduce(0) { $0 + $1.amount }
+        )
+    }
+
+    func incomeBreakdownReport(in month: Date = Date()) -> [IncomeBreakdownReportItem] {
+        let calendar = Self.jpCalendar
+        let profile = currentProfileSettingsBackup()
+        let monthIncomes = transactions.filter {
+            $0.type == .income && calendar.isDate($0.date, equalTo: month, toGranularity: .month)
+        }
+
+        let profileBase = profile.baseMonthlySalary
+        let profileOvertime = profile.fixedOvertimePay
+        let profileAllowance = profile.nonTaxableAllowance
+        let salaryTransactions = monthIncomes
+            .filter { $0.category == .salary }
+            .reduce(0) { $0 + $1.amount }
+        let bonus = monthIncomes
+            .filter { $0.category == .bonus }
+            .reduce(0) { $0 + $1.amount }
+        let investment = monthIncomes
+            .filter { $0.category == .investment }
+            .reduce(0) { $0 + $1.amount }
+        let other = monthIncomes
+            .filter { $0.category == .other_in }
+            .reduce(0) { $0 + $1.amount }
+
+        var items: [IncomeBreakdownReportItem] = []
+        if profileBase > 0 {
+            items.append(IncomeBreakdownReportItem(id: "base", name: "基本給", iconName: "briefcase.fill", colorHex: "#D4AF37", amount: profileBase))
+        } else if salaryTransactions > 0 {
+            items.append(IncomeBreakdownReportItem(id: "salary", name: "給与", iconName: "briefcase.fill", colorHex: "#D4AF37", amount: salaryTransactions))
+        }
+        if profileOvertime > 0 {
+            items.append(IncomeBreakdownReportItem(id: "overtime", name: "残業代", iconName: "clock.badge.fill", colorHex: "#F0D060", amount: profileOvertime))
+        }
+        if profileAllowance > 0 {
+            items.append(IncomeBreakdownReportItem(id: "allowance", name: "手当", iconName: "tram.fill", colorHex: "#81C784", amount: profileAllowance))
+        }
+        if bonus > 0 {
+            items.append(IncomeBreakdownReportItem(id: "bonus", name: "賞与", iconName: "star.fill", colorHex: "#FFB74D", amount: bonus))
+        }
+        if investment > 0 {
+            items.append(IncomeBreakdownReportItem(id: "investment", name: "投資収益", iconName: "chart.line.uptrend.xyaxis", colorHex: "#4FC3F7", amount: investment))
+        }
+        if other > 0 {
+            items.append(IncomeBreakdownReportItem(id: "other", name: "その他収入", iconName: "plus.circle.fill", colorHex: "#A8A8A8", amount: other))
+        }
+
+        let total = items.reduce(0) { $0 + $1.amount }
+        return items.map { item in
+            IncomeBreakdownReportItem(
+                id: item.id,
+                name: item.name,
+                iconName: item.iconName,
+                colorHex: item.colorHex,
+                amount: item.amount,
+                percentOfTotal: total > 0 ? item.amount / total : 0
+            )
+        }
+    }
+
+    func monthlyIncomeReport(months: Int = 6) -> [MonthlyIncomeReportItem] {
+        let calendar = Self.jpCalendar
+        let currentMonth = Self.startOfMonth(for: Date(), calendar: calendar)
+        return stride(from: months - 1, through: 0, by: -1).compactMap { offset in
+            guard let month = calendar.date(byAdding: .month, value: -offset, to: currentMonth) else { return nil }
+            let monthTransactions = transactions.filter {
+                $0.type == .income && calendar.isDate($0.date, equalTo: month, toGranularity: .month)
+            }
+            return MonthlyIncomeReportItem(
+                id: month,
+                month: month,
+                salary: monthTransactions.filter { $0.category == .salary }.reduce(0) { $0 + $1.amount },
+                bonus: monthTransactions.filter { $0.category == .bonus }.reduce(0) { $0 + $1.amount },
+                investment: monthTransactions.filter { $0.category == .investment }.reduce(0) { $0 + $1.amount },
+                other: monthTransactions.filter { $0.category == .other_in }.reduce(0) { $0 + $1.amount }
+            )
+        }
+    }
+
+    func annualIncomeProjectionReport(months: Int = 6) -> AnnualIncomeProjectionReport {
+        let calendar = Self.jpCalendar
+        let incomeMonths = monthlyIncomeReport(months: months)
+        let monthsWithIncome = incomeMonths.filter { $0.total > 0 }
+        let regularAverage: Double
+        if monthsWithIncome.isEmpty {
+            let profile = currentProfileSettingsBackup()
+            regularAverage = profile.baseMonthlySalary + profile.fixedOvertimePay + profile.nonTaxableAllowance
+        } else {
+            regularAverage = monthsWithIncome.reduce(0) { $0 + $1.salary + $1.investment + $1.other } / Double(monthsWithIncome.count)
+        }
+
+        let year = calendar.component(.year, from: Date())
+        let annualBonus = transactions.reduce(0) { total, transaction in
+            guard transaction.type == .income,
+                  transaction.category == .bonus,
+                  calendar.component(.year, from: transaction.date) == year else { return total }
+            return total + transaction.amount
+        }
+
+        return AnnualIncomeProjectionReport(
+            averageMonthlyIncome: regularAverage,
+            projectedAnnualIncome: regularAverage * 12 + annualBonus,
+            bonusIncluded: annualBonus,
+            monthsAnalyzed: monthsWithIncome.count
+        )
+    }
+
     func transactionDelta(after date: Date) -> Double {
         let calendar = Self.jpCalendar
         return transactions
@@ -805,6 +1277,62 @@ final class DataManager: ObservableObject {
             calendar: calendar
         )
         .reduce(0) { $0 + $1.amount }
+    }
+
+    private static func startOfMonth(for date: Date, calendar: Calendar) -> Date {
+        let comps = calendar.dateComponents([.year, .month], from: date)
+        return calendar.date(from: comps).map { calendar.startOfDay(for: $0) } ?? calendar.startOfDay(for: date)
+    }
+
+    private func reportExpenseTransactions(in month: Date, includeReimbursable: Bool) -> [Transaction] {
+        let calendar = Self.jpCalendar
+        return transactions.filter { transaction in
+            guard transaction.type == .expense,
+                  !transaction.isAssetAdjustment,
+                  calendar.isDate(transaction.date, equalTo: month, toGranularity: .month) else {
+                return false
+            }
+            return includeReimbursable || !isReimbursableExpense(transaction)
+        }
+    }
+
+    private func groupedExpenseAmounts(_ transactions: [Transaction]) -> [String: Double] {
+        transactions.reduce(into: [String: Double]()) { partial, transaction in
+            partial[expenseCategoryKey(for: transaction), default: 0] += transaction.amount
+        }
+    }
+
+    private func expenseCategoryKey(for transaction: Transaction) -> String {
+        transaction.categoryName ?? transaction.category.rawValue
+    }
+
+    private func isReimbursableExpense(_ transaction: Transaction) -> Bool {
+        if transaction.isBusinessExpense == true {
+            return true
+        }
+        let searchable = [
+            transaction.categoryName,
+            transaction.memo,
+            transaction.merchantName,
+            transaction.category.rawValue
+        ]
+        .compactMap { $0 }
+        .joined(separator: " ")
+        return ["経費", "立替", "立て替え", "精算", "仮払"].contains { searchable.localizedCaseInsensitiveContains($0) }
+    }
+
+    private func isFixedExpense(_ transaction: Transaction) -> Bool {
+        let searchable = [
+            transaction.categoryName,
+            transaction.memo,
+            transaction.category.rawValue
+        ]
+        .compactMap { $0 }
+        .joined(separator: " ")
+        return [
+            "住民税", "税金", "社会保険", "健康保険", "厚生年金", "保険",
+            "住宅", "家賃", "通信費", "水道光熱費", "固定費", "サブスク"
+        ].contains { searchable.localizedCaseInsensitiveContains($0) }
     }
 
     private func isPostedTransaction(_ transaction: Transaction) -> Bool {

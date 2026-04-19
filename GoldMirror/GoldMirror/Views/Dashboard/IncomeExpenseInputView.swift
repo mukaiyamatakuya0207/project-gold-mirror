@@ -118,6 +118,28 @@ enum AssetAccountKind: String, Codable {
     }
 }
 
+enum ReimbursementStatus: String, CaseIterable, Codable {
+    case unreimbursed = "未精算"
+    case awaitingRefund = "精算済み（返金待ち）"
+    case completed = "完了"
+
+    var icon: String {
+        switch self {
+        case .unreimbursed: return "exclamationmark.circle.fill"
+        case .awaitingRefund: return "clock.badge.checkmark.fill"
+        case .completed: return "checkmark.circle.fill"
+        }
+    }
+
+    var color: Color {
+        switch self {
+        case .unreimbursed: return Color.gmGold
+        case .awaitingRefund: return Color(hex: "#4FC3F7")
+        case .completed: return Color.gmPositive
+        }
+    }
+}
+
 struct Transaction: Identifiable, Codable {
     let id: UUID
     var type: TransactionType
@@ -138,6 +160,9 @@ struct Transaction: Identifiable, Codable {
     var categoryName: String? = nil
     var categoryIconName: String? = nil
     var categoryColorHex: String? = nil
+    var isBusinessExpense: Bool? = nil
+    var reimbursementStatus: ReimbursementStatus? = nil
+    var merchantName: String? = nil
 
     init(
         id: UUID = UUID(),
@@ -158,7 +183,10 @@ struct Transaction: Identifiable, Codable {
         assetAdjustmentTargetKind: AssetAccountKind? = nil,
         categoryName: String? = nil,
         categoryIconName: String? = nil,
-        categoryColorHex: String? = nil
+        categoryColorHex: String? = nil,
+        isBusinessExpense: Bool? = nil,
+        reimbursementStatus: ReimbursementStatus? = nil,
+        merchantName: String? = nil
     ) {
         self.id = id
         self.type = type
@@ -179,6 +207,9 @@ struct Transaction: Identifiable, Codable {
         self.categoryName = categoryName
         self.categoryIconName = categoryIconName
         self.categoryColorHex = categoryColorHex
+        self.isBusinessExpense = isBusinessExpense
+        self.reimbursementStatus = reimbursementStatus
+        self.merchantName = merchantName
     }
 
     var displayCategoryName: String {
@@ -199,6 +230,7 @@ struct Transaction: Identifiable, Codable {
 // ─────────────────────────────────────────
 struct IncomeExpenseInputView: View {
     @EnvironmentObject var dm: DataManager
+    @EnvironmentObject var ocrVM: OCRViewModel
     @Environment(\.dismiss) private var dismiss
     let editingTransaction: Transaction?
 
@@ -218,6 +250,9 @@ struct IncomeExpenseInputView: View {
     @State private var selectedAdjustmentSecuritiesAccountID: UUID?
     @State private var selectedExpenseCategoryID: UUID?
     @State private var didPopulateEditingTransaction = false
+    @State private var salaryOvertimeHoursText = ""
+    @State private var salaryLateNightHoursText = ""
+    @State private var showOCRScanner = false
 
     init(editingTransaction: Transaction? = nil) {
         self.editingTransaction = editingTransaction
@@ -320,6 +355,24 @@ struct IncomeExpenseInputView: View {
                                 )
                                     .frame(height: 56)
                                     .layoutPriority(1)
+
+                                if transactionType == .expense {
+                                    Button {
+                                        dismissKeyboard()
+                                        showOCRScanner = true
+                                    } label: {
+                                        Image(systemName: "doc.text.viewfinder")
+                                            .font(.system(size: 18, weight: .semibold))
+                                            .foregroundStyle(Color.gmGold)
+                                            .frame(width: 42, height: 42)
+                                            .background(Color.gmGold.opacity(0.12))
+                                            .clipShape(Circle())
+                                            .overlay(Circle().stroke(Color.gmGoldDim.opacity(0.45), lineWidth: 0.8))
+                                    }
+                                    .buttonStyle(.plain)
+                                    .contentShape(Circle())
+                                    .accessibilityLabel("レシートをスキャン")
+                                }
                             }
                             .padding(.horizontal, GMSpacing.md)
                             .frame(maxWidth: .infinity, minHeight: 64, maxHeight: 64, alignment: .leading)
@@ -469,6 +522,61 @@ struct IncomeExpenseInputView: View {
                                             .frame(maxWidth: .infinity, alignment: .leading)
                                         }
                                     }
+                                }
+                            }
+                            .padding(.horizontal, GMSpacing.md)
+                            .transition(.opacity.combined(with: .move(edge: .top)))
+                        }
+
+                        if transactionType == .income && selectedCategory == .salary {
+                            GMInputSection(title: "給与プロフィール", icon: "person.text.rectangle.fill") {
+                                VStack(alignment: .leading, spacing: GMSpacing.sm) {
+                                    HStack(spacing: GMSpacing.sm) {
+                                        VStack(alignment: .leading, spacing: 4) {
+                                            Text("超過残業時間")
+                                                .font(GMFont.caption(10, weight: .medium))
+                                                .foregroundStyle(Color.gmTextTertiary)
+                                            TextField("0", text: $salaryOvertimeHoursText)
+                                                .font(GMFont.body(15))
+                                                .foregroundStyle(Color.gmTextPrimary)
+                                                .keyboardType(.decimalPad)
+                                                .tint(Color.gmGold)
+                                        }
+
+                                        VStack(alignment: .leading, spacing: 4) {
+                                            Text("深夜時間")
+                                                .font(GMFont.caption(10, weight: .medium))
+                                                .foregroundStyle(Color.gmTextTertiary)
+                                            TextField("0", text: $salaryLateNightHoursText)
+                                                .font(GMFont.body(15))
+                                                .foregroundStyle(Color.gmTextPrimary)
+                                                .keyboardType(.decimalPad)
+                                                .tint(Color.gmGold)
+                                        }
+                                    }
+
+                                    Button {
+                                        loadSalaryFromProfile()
+                                    } label: {
+                                        HStack(spacing: GMSpacing.sm) {
+                                            Image(systemName: "arrow.down.doc.fill")
+                                                .font(.system(size: 13, weight: .semibold))
+                                            Text("プロフィールから読み込み")
+                                                .font(GMFont.caption(12, weight: .bold))
+                                            Spacer()
+                                            Text(dm.salaryEstimateFromProfile(
+                                                overtimeHours: doubleValue(salaryOvertimeHoursText),
+                                                lateNightHours: doubleValue(salaryLateNightHoursText)
+                                            ).estimatedNetPay.jpyFormatted)
+                                            .font(GMFont.mono(12, weight: .bold))
+                                        }
+                                        .foregroundStyle(Color.gmBackground)
+                                        .padding(.horizontal, GMSpacing.sm)
+                                        .padding(.vertical, 10)
+                                        .background(GMGradient.goldHorizontal)
+                                        .clipShape(RoundedRectangle(cornerRadius: GMRadius.sm))
+                                    }
+                                    .buttonStyle(.plain)
                                 }
                             }
                             .padding(.horizontal, GMSpacing.md)
@@ -682,6 +790,20 @@ struct IncomeExpenseInputView: View {
                 amountText = sanitized
             }
         }
+        .sheet(isPresented: $showOCRScanner) {
+            NavigationStack {
+                DocumentScannerView(
+                    initialDocumentType: .receipt,
+                    autoCreatesReceiptTransaction: false,
+                    onReceiptConfirmed: applyReceiptOCR
+                )
+                .environmentObject(ocrVM)
+                .environmentObject(dm)
+            }
+            .presentationDetents([.large])
+            .presentationDragIndicator(.visible)
+            .presentationBackground(Color.gmBackground)
+        }
         .environment(\.locale, Locale(identifier: "ja_JP"))
     }
 
@@ -855,6 +977,47 @@ struct IncomeExpenseInputView: View {
         }
     }
 
+    private func loadSalaryFromProfile() {
+        let result = dm.salaryEstimateFromProfile(
+            overtimeHours: doubleValue(salaryOvertimeHoursText),
+            lateNightHours: doubleValue(salaryLateNightHoursText)
+        )
+        amountText = "\(Int(result.estimatedNetPay.rounded()))"
+        if memo.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            memo = "給与（プロフィール計算）"
+        }
+        selectedCategory = .salary
+        transactionType = .income
+        ensureIncomeDestinationSelection()
+    }
+
+    private func doubleValue(_ text: String) -> Double {
+        Double(text.replacingOccurrences(of: ",", with: "")) ?? 0
+    }
+
+    private func applyReceiptOCR(_ result: OCRScanResult) {
+        transactionType = .expense
+        if let amount = result.totalAmount, amount > 0 {
+            amountText = "\(Int(amount.rounded()))"
+        }
+        if let date = result.receiptDate {
+            selectedDate = date
+        }
+        if let categoryName = result.suggestedCategoryName,
+           let category = dm.expenseCategories.first(where: { $0.name == categoryName }) {
+            selectedExpenseCategoryID = category.id
+        } else {
+            ensureExpenseCategorySelection()
+        }
+        if let merchant = result.merchantName?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !merchant.isEmpty,
+           memo.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            memo = merchant
+        }
+        selectedPaymentMethod = .cash
+        ensureAssetAdjustmentSelection()
+    }
+
     private func saveTransaction() {
         let card = selectedCreditCard
         let expenseCategory = selectedExpenseCategory
@@ -913,7 +1076,9 @@ struct IncomeExpenseInputView: View {
             assetAdjustmentTargetKind: isAssetAdjustment ? selectedAdjustmentTargetKind : nil,
             categoryName: transactionType == .expense ? expenseCategory?.name : nil,
             categoryIconName: transactionType == .expense ? expenseCategory?.iconName : nil,
-            categoryColorHex: transactionType == .expense ? expenseCategory?.colorHex : nil
+            categoryColorHex: transactionType == .expense ? expenseCategory?.colorHex : nil,
+            isBusinessExpense: transactionType == .expense && expenseCategory?.isBusinessExpense == true,
+            reimbursementStatus: transactionType == .expense && expenseCategory?.isBusinessExpense == true ? .unreimbursed : nil
         )
         if editingTransaction == nil {
             dm.addTransaction(t)
@@ -1198,4 +1363,5 @@ struct SelectionMenuRow: View {
 #Preview {
     IncomeExpenseInputView()
         .environmentObject(DataManager())
+        .environmentObject(OCRViewModel())
 }

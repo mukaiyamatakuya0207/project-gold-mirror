@@ -47,6 +47,7 @@ private nonisolated func performOCR(
         isConfirmed: false
     )
     ocrExtractFields(text: text, into: &r)
+    ocrExtractReceiptFields(text: text, into: &r)
     return r
 }
 
@@ -78,6 +79,146 @@ private nonisolated func ocrExtractFields(text: String, into r: inout OCRScanRes
 
 private nonisolated func ocrContains(_ text: String, _ keywords: [String]) -> Bool {
     keywords.contains { text.contains($0) }
+}
+
+private nonisolated func ocrExtractReceiptFields(text: String, into r: inout OCRScanResult) {
+    let lines = text
+        .components(separatedBy: .newlines)
+        .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+        .filter { !$0.isEmpty }
+
+    r.receiptDate = ocrReceiptDate(from: lines) ?? r.receiptDate
+    r.totalAmount = ocrReceiptTotalAmount(from: lines) ?? r.totalAmount
+    r.merchantName = ocrMerchantName(from: lines) ?? r.merchantName
+
+    let category = ocrSuggestedExpenseCategory(merchant: r.merchantName, rawText: text)
+    r.suggestedCategoryName = category.name
+    r.suggestedCategoryIconName = category.iconName
+    r.suggestedCategoryColorHex = category.colorHex
+}
+
+private nonisolated func ocrReceiptDate(from lines: [String]) -> Date? {
+    var calendar = Calendar(identifier: .gregorian)
+    calendar.locale = Locale(identifier: "ja_JP")
+    calendar.timeZone = TimeZone(identifier: "Asia/Tokyo") ?? .current
+    let nowYear = calendar.component(.year, from: Date())
+    let joined = lines.joined(separator: "\n")
+    let patterns: [(String, Bool)] = [
+        (#"((?:20)?\d{2})[./\-年]\s*(\d{1,2})[./\-月]\s*(\d{1,2})"#, true),
+        (#"(\d{1,2})[./\-月]\s*(\d{1,2})日?"#, false)
+    ]
+
+    for (pattern, hasYear) in patterns {
+        guard let regex = try? NSRegularExpression(pattern: pattern) else { continue }
+        let range = NSRange(joined.startIndex..., in: joined)
+        guard let match = regex.firstMatch(in: joined, range: range) else { continue }
+        func intAt(_ index: Int) -> Int? {
+            guard let swiftRange = Range(match.range(at: index), in: joined) else { return nil }
+            return Int(joined[swiftRange])
+        }
+        let year: Int
+        let month: Int?
+        let day: Int?
+        if hasYear {
+            guard let rawYear = intAt(1) else { continue }
+            year = rawYear < 100 ? 2000 + rawYear : rawYear
+            month = intAt(2)
+            day = intAt(3)
+        } else {
+            year = nowYear
+            month = intAt(1)
+            day = intAt(2)
+        }
+        guard let month, let day else { continue }
+        var comps = DateComponents()
+        comps.calendar = calendar
+        comps.timeZone = TimeZone(identifier: "Asia/Tokyo")
+        comps.year = year
+        comps.month = month
+        comps.day = day
+        if let date = calendar.date(from: comps) {
+            return calendar.startOfDay(for: date)
+        }
+    }
+    return nil
+}
+
+private nonisolated func ocrReceiptTotalAmount(from lines: [String]) -> Double? {
+    let priorityKeywords = ["総合計", "合計", "お会計", "領収金額", "ご利用金額", "請求金額", "税込合計", "税込"]
+    let ignoredKeywords = ["小計", "税", "消費税", "釣", "お釣", "預", "現金", "カード"]
+
+    for line in lines where ocrContains(line, priorityKeywords) && !ocrContains(line, ignoredKeywords) {
+        let values = ocrMoneyValues(in: line)
+        if let best = values.max() {
+            return best
+        }
+    }
+
+    for (index, line) in lines.enumerated() where ocrContains(line, priorityKeywords) {
+        let values = ocrMoneyValues(in: line)
+        if let best = values.max() {
+            return best
+        }
+        if index + 1 < lines.count, let best = ocrMoneyValues(in: lines[index + 1]).max() {
+            return best
+        }
+    }
+
+    return lines
+        .flatMap { ocrMoneyValues(in: $0) }
+        .filter { $0 >= 50 && $0 <= 10_000_000 }
+        .max()
+}
+
+private nonisolated func ocrMoneyValues(in text: String) -> [Double] {
+    let cleaned = text
+        .replacingOccurrences(of: ",", with: "")
+        .replacingOccurrences(of: "，", with: "")
+        .replacingOccurrences(of: "¥", with: "")
+        .replacingOccurrences(of: "￥", with: "")
+    guard let regex = try? NSRegularExpression(pattern: #"(?<!\d)(\d{2,8})(?!\d)"#) else { return [] }
+    return regex.matches(in: cleaned, range: NSRange(cleaned.startIndex..., in: cleaned)).compactMap { match in
+        guard let range = Range(match.range(at: 1), in: cleaned),
+              let value = Double(cleaned[range]) else { return nil }
+        return value
+    }
+}
+
+private nonisolated func ocrMerchantName(from lines: [String]) -> String? {
+    let blocked = [
+        "領収", "レシート", "receipt", "合計", "小計", "消費税", "税込", "釣", "電話",
+        "tel", "登録番号", "取引", "担当", "明細", "クレジット", "カード", "現金"
+    ]
+    return lines.first { line in
+        let compact = line.replacingOccurrences(of: " ", with: "")
+        guard compact.count >= 2 && compact.count <= 40 else { return false }
+        guard !compact.contains(where: { $0.isNumber }) || compact.filter(\.isNumber).count < compact.count / 2 else { return false }
+        return !blocked.contains { compact.localizedCaseInsensitiveContains($0) }
+    }
+}
+
+private nonisolated func ocrSuggestedExpenseCategory(
+    merchant: String?,
+    rawText: String
+) -> (name: String, iconName: String, colorHex: String) {
+    let searchable = [merchant, rawText].compactMap { $0 }.joined(separator: " ")
+
+    let rules: [([String], String, String, String)] = [
+        (["タクシー", "taxi", "jr", "駅", "電鉄", "地下鉄", "バス", "高速", "駐車", "交通"], "交通費", "train.side.front.car", "#4FC3F7"),
+        (["ホテル", "hotel", "宿泊", "旅館", "inn"], "特別な支出", "bed.double.fill", "#B0BEC5"),
+        (["接待", "会食", "御食事", "お食事", "懇親"], "交際費", "person.2.fill", "#F06292"),
+        (["レストラン", "restaurant", "居酒屋", "カフェ", "cafe", "喫茶", "弁当", "スーパー", "食品"], "食費", "fork.knife", "#FF8A65"),
+        (["コンビニ", "セブン", "ローソン", "ファミリーマート", "ファミマ", "薬局", "ドラッグ"], "日用品", "basket.fill", "#A5D6A7"),
+        (["文具", "コピー", "印刷", "郵便", "宅急便", "オフィス", "事務"], "その他支出", "briefcase.fill", "#A8A8A8")
+    ]
+
+    if let match = rules.first(where: { rule in
+        let keywords = rule.0
+        return keywords.contains { searchable.localizedCaseInsensitiveContains($0) }
+    }) {
+        return (match.1, match.2, match.3)
+    }
+    return ("その他支出", "ellipsis.circle.fill", "#A8A8A8")
 }
 
 // Public so OCRReviewView and others can use it

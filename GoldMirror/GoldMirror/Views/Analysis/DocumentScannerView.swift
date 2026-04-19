@@ -12,12 +12,26 @@ import Vision
 // ─────────────────────────────────────────
 struct DocumentScannerView: View {
     @EnvironmentObject var ocrVM: OCRViewModel
+    @EnvironmentObject var dm: DataManager
+    @Environment(\.dismiss) private var dismiss
     @State private var showImagePicker = false
     @State private var showLiveScanner = false
     @State private var showCameraPermissionAlert = false
     @State private var cameraPermissionMessage = ""
-    @State private var selectedDocType: TaxDocumentType = .withholdingSlip
+    @State private var selectedDocType: TaxDocumentType
     @State private var animatePulse = false
+    private let autoCreatesReceiptTransaction: Bool
+    private let onReceiptConfirmed: ((OCRScanResult) -> Void)?
+
+    init(
+        initialDocumentType: TaxDocumentType = .withholdingSlip,
+        autoCreatesReceiptTransaction: Bool = true,
+        onReceiptConfirmed: ((OCRScanResult) -> Void)? = nil
+    ) {
+        _selectedDocType = State(initialValue: initialDocumentType)
+        self.autoCreatesReceiptTransaction = autoCreatesReceiptTransaction
+        self.onReceiptConfirmed = onReceiptConfirmed
+    }
 
     private func openCamera() {
         switch AVCaptureDevice.authorizationStatus(for: .video) {
@@ -44,104 +58,161 @@ struct DocumentScannerView: View {
     }
 
     var body: some View {
-        NavigationStack {
-            ZStack {
-                Color.gmBackground.ignoresSafeArea()
+        ZStack {
+            Color.gmBackground.ignoresSafeArea()
 
-                ScrollView(showsIndicators: false) {
-                    VStack(spacing: GMSpacing.lg) {
+            ScrollView(showsIndicators: false) {
+                VStack(spacing: GMSpacing.lg) {
 
-                        // ── Header ──
-                        ScannerPageHeader()
+                    // ── Header ──
+                    ScannerPageHeader()
 
-                        // ── Document Type Picker ──
-                        DocTypePicker(selected: $selectedDocType)
-                            .padding(.horizontal, GMSpacing.md)
-
-                        // ── Scan Zone ──
-                        ScanZoneView(
-                            animatePulse: $animatePulse,
-                            isProcessing: ocrVM.isProcessing,
-                            progress: ocrVM.recognitionProgress,
-                            onCamera: {
-                                openCamera()
-                            },
-                            onLibrary: {
-                                showImagePicker = true
-                            }
-                        )
+                    // ── Document Type Picker ──
+                    DocTypePicker(selected: $selectedDocType)
                         .padding(.horizontal, GMSpacing.md)
-                        .onAppear { withAnimation(.easeInOut(duration: 1.5).repeatForever()) { animatePulse = true } }
 
-                        // ── Extraction Guide ──
-                        ExtractionGuideCard()
-                            .padding(.horizontal, GMSpacing.md)
-
-                        // ── Scan History ──
-                        if !ocrVM.userProfile.scanHistory.isEmpty {
-                            ScanHistoryCard(
-                                history: ocrVM.userProfile.scanHistory,
-                                profile: ocrVM.userProfile
-                            )
-                            .padding(.horizontal, GMSpacing.md)
-                        }
-
-                        Spacer().frame(height: 100)
-                    }
-                    .padding(.top, GMSpacing.md)
-                }
-            }
-            .navigationBarHidden(true)
-            // Image picker
-            .sheet(isPresented: $showImagePicker) {
-                GMImagePicker(onSelect: { image in
-                    ocrVM.recognizeText(from: image, documentType: selectedDocType)
-                })
-            }
-            // Live scanner
-            .fullScreenCover(isPresented: $showLiveScanner) {
-                LiveDocumentScanner(
-                    docType: selectedDocType,
-                    onCapture: { image in
-                        showLiveScanner = false
-                        ocrVM.recognizeText(from: image, documentType: selectedDocType)
-                    },
-                    onCancel: {
-                        showLiveScanner = false
-                    },
-                    onError: { message in
-                        showLiveScanner = false
-                        ocrVM.errorMessage = message
-                    }
-                )
-            }
-            // Review sheet
-            .sheet(isPresented: $ocrVM.showReviewSheet) {
-                if let result = ocrVM.scanResult {
-                    OCRReviewView(
-                        result: result,
-                        onConfirm: { confirmed in
-                            ocrVM.confirmAndSave(result: confirmed)
+                    // ── Scan Zone ──
+                    ScanZoneView(
+                        animatePulse: $animatePulse,
+                        isProcessing: ocrVM.isProcessing,
+                        progress: ocrVM.recognitionProgress,
+                        onCamera: {
+                            openCamera()
+                        },
+                        onLibrary: {
+                            showImagePicker = true
                         }
                     )
-                    .environmentObject(ocrVM)
+                    .padding(.horizontal, GMSpacing.md)
+                    .onAppear { withAnimation(.easeInOut(duration: 1.5).repeatForever()) { animatePulse = true } }
+
+                    // ── Extraction Guide ──
+                    ExtractionGuideCard()
+                        .padding(.horizontal, GMSpacing.md)
+
+                    // ── Scan History ──
+                    if !ocrVM.userProfile.scanHistory.isEmpty {
+                        ScanHistoryCard(
+                            history: ocrVM.userProfile.scanHistory,
+                            profile: ocrVM.userProfile
+                        )
+                        .padding(.horizontal, GMSpacing.md)
+                    }
+
+                    Spacer().frame(height: 100)
                 }
-            }
-            // Error alert
-            .alert("スキャンエラー", isPresented: .init(
-                get: { ocrVM.errorMessage != nil },
-                set: { if !$0 { ocrVM.errorMessage = nil } }
-            )) {
-                Button("OK") { ocrVM.errorMessage = nil }
-            } message: {
-                Text(ocrVM.errorMessage ?? "")
-            }
-            .alert("カメラを使用できません", isPresented: $showCameraPermissionAlert) {
-                Button("OK") {}
-            } message: {
-                Text(cameraPermissionMessage)
+                .padding(.top, GMSpacing.md)
             }
         }
+        .navigationBarTitleDisplayMode(.inline)
+        .navigationBarBackButtonHidden(true)
+        .toolbarBackground(Color.gmBackground, for: .navigationBar)
+        .toolbarBackground(.visible, for: .navigationBar)
+        .toolbar {
+            ToolbarItem(placement: .topBarLeading) {
+                Button("Back") { dismiss() }
+                    .foregroundStyle(Color.gmTextSecondary)
+                    .font(GMFont.body(15, weight: .semibold))
+            }
+            ToolbarItem(placement: .principal) {
+                Text("書類スキャン")
+                    .font(GMFont.heading(16, weight: .semibold))
+                    .foregroundStyle(GMGradient.goldHorizontal)
+            }
+        }
+        // Image picker
+        .sheet(isPresented: $showImagePicker) {
+            GMImagePicker(onSelect: { image in
+                ocrVM.recognizeText(from: image, documentType: selectedDocType)
+            })
+        }
+        // Live scanner
+        .fullScreenCover(isPresented: $showLiveScanner) {
+            LiveDocumentScanner(
+                docType: selectedDocType,
+                onCapture: { image in
+                    showLiveScanner = false
+                    ocrVM.recognizeText(from: image, documentType: selectedDocType)
+                },
+                onCancel: {
+                    showLiveScanner = false
+                },
+                onError: { message in
+                    showLiveScanner = false
+                    ocrVM.errorMessage = message
+                }
+            )
+        }
+        // Review sheet
+        .sheet(isPresented: $ocrVM.showReviewSheet) {
+            if let result = ocrVM.scanResult {
+                OCRReviewView(
+                    result: result,
+                    onConfirm: { confirmed in
+                        if autoCreatesReceiptTransaction, let transaction = receiptTransaction(from: confirmed) {
+                            dm.addTransaction(transaction)
+                        }
+                        onReceiptConfirmed?(confirmed)
+                        ocrVM.confirmAndSave(result: confirmed)
+                        if onReceiptConfirmed != nil {
+                            dismiss()
+                        }
+                    }
+                )
+                .environmentObject(ocrVM)
+                .environmentObject(dm)
+            }
+        }
+        // Error alert
+        .alert("スキャンエラー", isPresented: .init(
+            get: { ocrVM.errorMessage != nil },
+            set: { if !$0 { ocrVM.errorMessage = nil } }
+        )) {
+            Button("OK") { ocrVM.errorMessage = nil }
+        } message: {
+            Text(ocrVM.errorMessage ?? "")
+        }
+        .alert("カメラを使用できません", isPresented: $showCameraPermissionAlert) {
+            Button("OK") {}
+        } message: {
+            Text(cameraPermissionMessage)
+        }
+    }
+
+    private func receiptTransaction(from result: OCRScanResult) -> Transaction? {
+        guard result.documentType == .receipt,
+              let amount = result.totalAmount,
+              amount > 0 else { return nil }
+
+        let categoryName = result.suggestedCategoryName ?? "その他支出"
+        let managedCategory = dm.expenseCategories.first { $0.name == categoryName }
+        let enumCategory: TransactionCategory
+        switch categoryName {
+        case "食費": enumCategory = .food
+        case "交通費": enumCategory = .transport
+        case "娯楽": enumCategory = .entertainment
+        case "医療": enumCategory = .health
+        case "買い物", "日用品", "服飾費": enumCategory = .shopping
+        default: enumCategory = .other_ex
+        }
+
+        let merchant = result.merchantName?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let memo = merchant?.isEmpty == false ? "OCRレシート: \(merchant!)" : "OCRレシート"
+
+        return Transaction(
+            type: .expense,
+            amount: amount,
+            category: enumCategory,
+            date: result.receiptDate ?? Date(),
+            memo: memo,
+            paymentMethod: .cash,
+            categoryName: managedCategory?.name ?? categoryName,
+            categoryIconName: managedCategory?.iconName ?? result.suggestedCategoryIconName,
+            categoryColorHex: managedCategory?.colorHex ?? result.suggestedCategoryColorHex,
+            isBusinessExpense: result.isBusinessExpense,
+            reimbursementStatus: result.isBusinessExpense == true ? (result.reimbursementStatus ?? .unreimbursed) : nil,
+            merchantName: merchant
+        )
     }
 }
 

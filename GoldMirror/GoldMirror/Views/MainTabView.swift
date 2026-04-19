@@ -51,7 +51,7 @@ enum GMTab: Int, CaseIterable {
         case .dashboard: return "square.grid.2x2.fill"
         case .calendar:  return "calendar"
         case .mirror:    return "person.2.fill"
-        case .analysis:  return "chart.bar.xaxis"
+        case .analysis:  return "chart.pie.fill"
         case .settings:  return "gearshape.fill"
         }
     }
@@ -65,6 +65,8 @@ enum GMTab: Int, CaseIterable {
         case .settings:  return "設定"
         }
     }
+
+    var sidebarTitle: String { title }
 }
 
 // ─────────────────────────────────────────
@@ -74,6 +76,9 @@ enum GMTabBarConstants {
     static let barHeight:   CGFloat = 60
     static let fabDiameter: CGFloat = 56
     static let floatingActionBottomPadding: CGFloat = 20
+    static let iPadSidebarMinWidth: CGFloat = 350
+    static let iPadSidebarWidth: CGFloat = 380
+    static let iPadSidebarMaxWidth: CGFloat = 400
 }
 
 // ─────────────────────────────────────────
@@ -99,6 +104,8 @@ struct MainTabView: View {
     @State private var analysisRootID = UUID()
     @State private var settingsRootID = UUID()
     @State private var iPadDetailRootID = UUID()
+    @State private var iPadSplitRootID = UUID()
+    @State private var iPadColumnVisibility: NavigationSplitViewVisibility = .all
 
     private var shouldShowIncomeButton: Bool {
         selectedTab == GMTab.dashboard.rawValue || selectedTab == GMTab.calendar.rawValue
@@ -134,6 +141,7 @@ struct MainTabView: View {
         .sheet(isPresented: $showIncome) {
             IncomeExpenseInputView()
                 .environmentObject(dataManager)
+                .environmentObject(ocrViewModel)
         }
     }
 
@@ -191,12 +199,23 @@ struct MainTabView: View {
 
     private func iPadSplitLayout(proxy: GeometryProxy) -> some View {
         ZStack(alignment: .bottomTrailing) {
-            NavigationSplitView {
-                GMIPadSidebar(selectedTab: selectedTabBinding)
-                    .navigationSplitViewColumnWidth(min: 230, ideal: 260, max: 300)
+            NavigationSplitView(columnVisibility: $iPadColumnVisibility) {
+                GMIPadSidebar(selectedTab: selectedTab) { tab in
+                    selectTab(tab.rawValue)
+                }
+                .frame(width: GMTabBarConstants.iPadSidebarWidth)
+                .background(Color.black.ignoresSafeArea(.all, edges: .leading))
+                .navigationSplitViewColumnWidth(
+                    min: GMTabBarConstants.iPadSidebarMinWidth,
+                    ideal: GMTabBarConstants.iPadSidebarWidth,
+                    max: GMTabBarConstants.iPadSidebarMaxWidth
+                )
+                .toolbarBackground(Color.black, for: .navigationBar)
+                .toolbarBackground(.visible, for: .navigationBar)
             } detail: {
                 NavigationStack(path: $iPadDetailPath) {
                     tabContent(GMTab(rawValue: selectedTab) ?? .dashboard)
+                        .id(selectedTab)
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
                 .id(iPadDetailRootID)
@@ -204,6 +223,14 @@ struct MainTabView: View {
             .navigationSplitViewStyle(.balanced)
             .tint(Color.gmGold)
             .background(Color.gmBackground.ignoresSafeArea())
+            .id(iPadSplitRootID)
+            .onAppear {
+                iPadColumnVisibility = .all
+            }
+            .onChange(of: selectedTab) { _, _ in
+                iPadColumnVisibility = .all
+                resetAllNavigationStacks()
+            }
 
             if shouldShowIncomeButton {
                 incomeFloatingButton
@@ -224,6 +251,7 @@ struct MainTabView: View {
         case .calendar:
             WealthCalendarView()
                 .environmentObject(dataManager)
+                .environmentObject(ocrViewModel)
         case .mirror:
             MirrorView()
                 .environmentObject(viewModel)
@@ -237,16 +265,17 @@ struct MainTabView: View {
             SettingsView()
                 .environmentObject(dataManager)
                 .environmentObject(viewModel)
+                .environmentObject(ocrViewModel)
         }
     }
 
     private func selectTab(_ rawValue: Int) {
         guard GMTab(rawValue: rawValue) != nil else { return }
-        let isSameTab = selectedTab == rawValue
-        if !isSameTab {
-            selectedTab = rawValue
-        }
         resetAllNavigationStacks()
+        if selectedTab == rawValue {
+            return
+        }
+        selectedTab = rawValue
     }
 
     private func resetAllNavigationStacks() {
@@ -263,6 +292,7 @@ struct MainTabView: View {
         analysisRootID = UUID()
         settingsRootID = UUID()
         iPadDetailRootID = UUID()
+        iPadSplitRootID = UUID()
     }
 
     private var incomeFloatingButton: some View {
@@ -296,11 +326,14 @@ struct MainTabView: View {
 // MARK: iPad Sidebar
 // ─────────────────────────────────────────
 struct GMIPadSidebar: View {
-    @Binding var selectedTab: Int
+    let selectedTab: Int
+    let onSelect: (GMTab) -> Void
 
     var body: some View {
-        ZStack {
-            Color.gmBackground.ignoresSafeArea()
+        ZStack(alignment: .trailing) {
+            Color.black
+                .frame(width: GMTabBarConstants.iPadSidebarWidth)
+                .ignoresSafeArea(.all, edges: [.top, .bottom, .leading])
 
             VStack(alignment: .leading, spacing: GMSpacing.lg) {
                 VStack(alignment: .leading, spacing: 4) {
@@ -323,16 +356,27 @@ struct GMIPadSidebar: View {
 
                 Spacer()
             }
+            .frame(width: GMTabBarConstants.iPadSidebarWidth, alignment: .topLeading)
+            .frame(maxHeight: .infinity, alignment: .topLeading)
             .padding(.vertical, GMSpacing.md)
+            .ignoresSafeArea(.all, edges: .leading)
+
+            Rectangle()
+                .fill(Color.gmGold.opacity(0.32))
+                .frame(width: 0.75)
+                .ignoresSafeArea(edges: .vertical)
         }
         .scrollContentBackground(.hidden)
+        .frame(width: GMTabBarConstants.iPadSidebarWidth)
+        .frame(maxHeight: .infinity)
+        .background(Color.black.ignoresSafeArea(.all, edges: [.top, .bottom, .leading]))
     }
 
     private func sidebarButton(_ tab: GMTab) -> some View {
         let selected = selectedTab == tab.rawValue
         return Button {
             withAnimation(.spring(response: 0.28, dampingFraction: 0.72)) {
-                selectedTab = tab.rawValue
+                onSelect(tab)
             }
         } label: {
             HStack(spacing: GMSpacing.sm) {
@@ -343,7 +387,7 @@ struct GMIPadSidebar: View {
                     .background(selected ? Color.gmGold : Color.gmGold.opacity(0.12))
                     .clipShape(RoundedRectangle(cornerRadius: GMRadius.sm))
 
-                Text(tab.japaneseTitle)
+                Text(tab.sidebarTitle)
                     .font(GMFont.body(15, weight: selected ? .bold : .medium))
                     .foregroundStyle(selected ? Color.gmTextPrimary : Color.gmTextSecondary)
 
@@ -373,13 +417,12 @@ struct GMCustomTabBar: View {
     let bottomSafeArea: CGFloat
     @Namespace private var pill
 
-    private let leftTabs: [(Int, String, String)] = [
+    private let tabs: [(Int, String, String)] = [
         (0, "square.grid.2x2.fill", "Dashboard"),
-        (1, "calendar",             "Calendar")
-    ]
-    private let rightTabs: [(Int, String, String)] = [
-        (3, "chart.bar.xaxis", "Analysis"),
-        (4, "gearshape.fill",  "Settings")
+        (1, "calendar", "Calendar"),
+        (2, "person.2.fill", "Mirror"),
+        (3, "chart.pie.fill", "Analysis"),
+        (4, "gearshape.fill", "Settings")
     ]
 
     var body: some View {
@@ -400,9 +443,7 @@ struct GMCustomTabBar: View {
 
                 // Tab icon row
                 HStack(alignment: .center, spacing: 0) {
-                    ForEach(leftTabs, id: \.0)  { tabItem($0, $1, $2) }
-                    tabItem(2, "person.2.fill", "Mirror")   // centre (real tab)
-                    ForEach(rightTabs, id: \.0) { tabItem($0, $1, $2) }
+                    ForEach(tabs, id: \.0) { tabItem($0, $1, $2) }
                 }
                 .frame(height: GMTabBarConstants.barHeight)
                 .padding(.top, 4)
@@ -439,8 +480,10 @@ struct GMCustomTabBar: View {
                         .animation(.spring(response: 0.25, dampingFraction: 0.7), value: sel)
                 }
                 Text(label)
-                    .font(GMFont.caption(9, weight: sel ? .semibold : .regular))
+                    .font(GMFont.caption(8, weight: sel ? .semibold : .regular))
                     .foregroundStyle(sel ? Color.gmGold : Color.gmTabInactive)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.75)
             }
             .frame(maxWidth: .infinity)
             .contentShape(Rectangle())

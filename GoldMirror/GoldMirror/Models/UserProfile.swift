@@ -73,6 +73,7 @@ enum TaxDocumentType: String, CaseIterable, Codable {
     case withholdingSlip  = "源泉徴収票"
     case taxReturn        = "確定申告書"
     case yearEndAdjustment = "年末調整書"
+    case receipt          = "レシート"
     case other            = "その他書類"
 
     var icon: String {
@@ -80,6 +81,7 @@ enum TaxDocumentType: String, CaseIterable, Codable {
         case .withholdingSlip:   return "doc.text.fill"
         case .taxReturn:         return "doc.richtext.fill"
         case .yearEndAdjustment: return "doc.badge.checkmark.fill"
+        case .receipt:           return "receipt.fill"
         case .other:             return "doc.fill"
         }
     }
@@ -102,11 +104,21 @@ struct OCRScanResult: Identifiable, Codable {
     var lifeInsuranceDeduction: Double?    // 生命保険料の控除額
     var taxableIncome: Double?             // 給与所得控除後の金額
 
+    // レシート・経費精算用フィールド
+    var receiptDate: Date?
+    var merchantName: String?
+    var totalAmount: Double?
+    var suggestedCategoryName: String?
+    var suggestedCategoryIconName: String?
+    var suggestedCategoryColorHex: String?
+    var isBusinessExpense: Bool?
+    var reimbursementStatus: ReimbursementStatus?
+
     // ユーザーが確認・修正済みか
     var isConfirmed: Bool
 
     // デフォルト値なし・全引数明示（どのコンテキストからでも呼べる）
-    init(
+    nonisolated init(
         id: UUID,
         documentType: TaxDocumentType,
         scannedAt: Date,

@@ -6,6 +6,7 @@ import SwiftUI
 struct SettingsView: View {
     @EnvironmentObject var dm: DataManager
     @EnvironmentObject var vm: AssetViewModel
+    @EnvironmentObject var ocrVM: OCRViewModel
     @EnvironmentObject var securityManager: SecurityManager
     @StateObject private var nm = NotificationManager.shared
 
@@ -22,6 +23,10 @@ struct SettingsView: View {
     @AppStorage(DataManager.profileIncomeTaxCategoryStorageKey) private var incomeTaxCategory = "甲"
     @AppStorage(DataManager.profileResidentTaxAnnualStorageKey) private var residentTaxAnnual = 0.0
     @AppStorage(DataManager.profileResidentTaxMonthlyStorageKey) private var residentTaxMonthly = 0.0
+    @AppStorage(DataManager.profileBaseMonthlySalaryStorageKey) private var baseMonthlySalary = 0.0
+    @AppStorage(DataManager.profileFixedOvertimePayStorageKey) private var fixedOvertimePay = 0.0
+    @AppStorage(DataManager.profileFixedOvertimeHoursStorageKey) private var fixedOvertimeHours = 0.0
+    @AppStorage(DataManager.profileNonTaxableAllowanceStorageKey) private var nonTaxableAllowance = 0.0
     @State private var showDataExporter = false
     @State private var showDataImporter = false
     @State private var exportDocument = GoldMirrorDataDocument()
@@ -252,6 +257,19 @@ struct SettingsView: View {
 
                         GMSettingsDivider()
 
+                        SettingsLinkRow(
+                            icon: "doc.viewfinder.fill",
+                            iconColor: Color.gmGold,
+                            title: "書類スキャン",
+                            subtitle: "レシート・税務書類をOCRで読み取り"
+                        ) {
+                            DocumentScannerView()
+                                .environmentObject(ocrVM)
+                                .environmentObject(dm)
+                        }
+
+                        GMSettingsDivider()
+
                         SettingsNavigationRow(
                             icon: "icloud.fill",
                             iconColor: Color(hex: "#4FC3F7"),
@@ -313,8 +331,13 @@ struct SettingsView: View {
                 dependentsCount: $dependentsCount,
                 incomeTaxCategory: $incomeTaxCategory,
                 residentTaxAnnual: $residentTaxAnnual,
-                residentTaxMonthly: $residentTaxMonthly
+                residentTaxMonthly: $residentTaxMonthly,
+                baseMonthlySalary: $baseMonthlySalary,
+                fixedOvertimePay: $fixedOvertimePay,
+                fixedOvertimeHours: $fixedOvertimeHours,
+                nonTaxableAllowance: $nonTaxableAllowance
             )
+            .environmentObject(dm)
         }
         .overlay(alignment: .top) {
             SettingsPageHeader()
@@ -696,6 +719,7 @@ struct GMSettingsDivider: View {
 // MARK: Profile Edit Sheet
 // ─────────────────────────────────────────
 struct ProfileEditSheet: View {
+    @EnvironmentObject var dm: DataManager
     @Binding var displayName: String
     @Binding var tagline: String
     @Binding var gender: String
@@ -707,6 +731,10 @@ struct ProfileEditSheet: View {
     @Binding var incomeTaxCategory: String
     @Binding var residentTaxAnnual: Double
     @Binding var residentTaxMonthly: Double
+    @Binding var baseMonthlySalary: Double
+    @Binding var fixedOvertimePay: Double
+    @Binding var fixedOvertimeHours: Double
+    @Binding var nonTaxableAllowance: Double
     @Environment(\.dismiss) private var dismiss
 
     @State private var localName: String    = ""
@@ -720,6 +748,10 @@ struct ProfileEditSheet: View {
     @State private var localIncomeTaxCategory: String = "甲"
     @State private var localResidentTaxAnnualText: String = ""
     @State private var localResidentTaxMonthlyText: String = ""
+    @State private var localBaseMonthlySalaryText: String = ""
+    @State private var localFixedOvertimePayText: String = ""
+    @State private var localFixedOvertimeHoursText: String = ""
+    @State private var localNonTaxableAllowanceText: String = ""
 
     private let genders = ["未設定", "女性", "男性", "その他", "回答しない"]
     private let incomeTaxCategories = ["甲", "乙"]
@@ -732,6 +764,23 @@ struct ProfileEditSheet: View {
         "徳島県", "香川県", "愛媛県", "高知県", "福岡県", "佐賀県", "長崎県",
         "熊本県", "大分県", "宮崎県", "鹿児島県", "沖縄県"
     ]
+
+    private var salaryPreview: DataManager.SalaryCalculationResult {
+        dm.salaryEstimate(
+            baseMonthlySalary: doubleValue(localBaseMonthlySalaryText),
+            fixedOvertimePay: doubleValue(localFixedOvertimePayText),
+            fixedOvertimeHours: doubleValue(localFixedOvertimeHoursText),
+            nonTaxableAllowance: doubleValue(localNonTaxableAllowanceText),
+            standardMonthlyRemuneration: doubleValue(localStandardMonthlyRemunerationText),
+            dependentsCount: intValue(localDependentsCountText),
+            incomeTaxCategory: localIncomeTaxCategory,
+            residentTaxAnnual: doubleValue(localResidentTaxAnnualText),
+            residentTaxMonthly: doubleValue(localResidentTaxMonthlyText),
+            prefecture: localPrefecture,
+            overtimeHours: doubleValue(localFixedOvertimeHoursText),
+            lateNightHours: 0
+        )
+    }
 
     var body: some View {
         NavigationStack {
@@ -803,6 +852,38 @@ struct ProfileEditSheet: View {
                                     .tint(Color.gmGold)
                             }
 
+                            GMInputSection(title: "月給（基本給）", icon: "briefcase.fill") {
+                                TextField("0", text: $localBaseMonthlySalaryText)
+                                    .font(GMFont.body(15))
+                                    .foregroundStyle(Color.gmTextPrimary)
+                                    .keyboardType(.numberPad)
+                                    .tint(Color.gmGold)
+                            }
+
+                            GMInputSection(title: "固定残業代", icon: "clock.badge.fill") {
+                                TextField("0", text: $localFixedOvertimePayText)
+                                    .font(GMFont.body(15))
+                                    .foregroundStyle(Color.gmTextPrimary)
+                                    .keyboardType(.numberPad)
+                                    .tint(Color.gmGold)
+                            }
+
+                            GMInputSection(title: "固定残業時間", icon: "timer") {
+                                TextField("例：40", text: $localFixedOvertimeHoursText)
+                                    .font(GMFont.body(15))
+                                    .foregroundStyle(Color.gmTextPrimary)
+                                    .keyboardType(.decimalPad)
+                                    .tint(Color.gmGold)
+                            }
+
+                            GMInputSection(title: "非課税手当", icon: "tram.fill") {
+                                TextField("通勤手当など", text: $localNonTaxableAllowanceText)
+                                    .font(GMFont.body(15))
+                                    .foregroundStyle(Color.gmTextPrimary)
+                                    .keyboardType(.numberPad)
+                                    .tint(Color.gmGold)
+                            }
+
                             GMInputSection(title: "標準報酬月額", icon: "yensign.circle.fill") {
                                 TextField("健康保険・厚生年金の標準報酬月額", text: $localStandardMonthlyRemunerationText)
                                     .font(GMFont.body(15))
@@ -842,6 +923,8 @@ struct ProfileEditSheet: View {
                                     .keyboardType(.numberPad)
                                     .tint(Color.gmGold)
                             }
+
+                            ProfileSalaryPreviewCard(result: salaryPreview)
                         }
                         .padding(.horizontal, GMSpacing.md)
 
@@ -902,6 +985,10 @@ struct ProfileEditSheet: View {
         localIncomeTaxCategory = incomeTaxCategory
         localResidentTaxAnnualText = residentTaxAnnual > 0 ? "\(Int(residentTaxAnnual))" : ""
         localResidentTaxMonthlyText = residentTaxMonthly > 0 ? "\(Int(residentTaxMonthly))" : ""
+        localBaseMonthlySalaryText = baseMonthlySalary > 0 ? "\(Int(baseMonthlySalary))" : ""
+        localFixedOvertimePayText = fixedOvertimePay > 0 ? "\(Int(fixedOvertimePay))" : ""
+        localFixedOvertimeHoursText = fixedOvertimeHours > 0 ? decimalText(fixedOvertimeHours) : ""
+        localNonTaxableAllowanceText = nonTaxableAllowance > 0 ? "\(Int(nonTaxableAllowance))" : ""
     }
 
     private func save() {
@@ -916,7 +1003,77 @@ struct ProfileEditSheet: View {
         incomeTaxCategory = localIncomeTaxCategory
         residentTaxAnnual = Double(localResidentTaxAnnualText.replacingOccurrences(of: ",", with: "")) ?? 0
         residentTaxMonthly = Double(localResidentTaxMonthlyText.replacingOccurrences(of: ",", with: "")) ?? 0
+        baseMonthlySalary = doubleValue(localBaseMonthlySalaryText)
+        fixedOvertimePay = doubleValue(localFixedOvertimePayText)
+        fixedOvertimeHours = doubleValue(localFixedOvertimeHoursText)
+        nonTaxableAllowance = doubleValue(localNonTaxableAllowanceText)
         dismiss()
+    }
+
+    private func doubleValue(_ text: String) -> Double {
+        Double(text.replacingOccurrences(of: ",", with: "")) ?? 0
+    }
+
+    private func intValue(_ text: String) -> Int {
+        Int(text.replacingOccurrences(of: ",", with: "")) ?? 0
+    }
+
+    private func decimalText(_ value: Double) -> String {
+        value.truncatingRemainder(dividingBy: 1) == 0 ? "\(Int(value))" : "\(value)"
+    }
+}
+
+private struct ProfileSalaryPreviewCard: View {
+    let result: DataManager.SalaryCalculationResult
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: GMSpacing.sm) {
+            HStack {
+                Image(systemName: "function")
+                    .foregroundStyle(Color.gmGold)
+                Text("給与・控除プレビュー")
+                    .font(GMFont.heading(14, weight: .semibold))
+                    .foregroundStyle(Color.gmTextPrimary)
+                Spacer()
+            }
+
+            ProfileSalaryPreviewRow(label: "想定総支給", value: result.grossPay.jpyFormatted, highlight: true)
+            ProfileSalaryPreviewRow(label: "時間単価", value: result.hourlyRate.jpyFormatted)
+            ProfileSalaryPreviewRow(label: "健康保険料", value: result.healthInsurancePremium.jpyFormatted)
+            ProfileSalaryPreviewRow(label: "厚生年金保険料", value: result.welfarePensionPremium.jpyFormatted)
+            ProfileSalaryPreviewRow(label: "所得税（概算）", value: result.estimatedIncomeTax.jpyFormatted)
+            ProfileSalaryPreviewRow(label: "住民税（月額）", value: result.residentTaxMonthly.jpyFormatted)
+
+            Divider()
+                .background(Color.gmGoldDim.opacity(0.35))
+
+            ProfileSalaryPreviewRow(label: "推定手取り", value: result.estimatedNetPay.jpyFormatted, highlight: true)
+        }
+        .padding(GMSpacing.md)
+        .background(Color.gmSurfaceElevated)
+        .clipShape(RoundedRectangle(cornerRadius: GMRadius.md))
+        .overlay(
+            RoundedRectangle(cornerRadius: GMRadius.md)
+                .strokeBorder(Color.gmGoldDim.opacity(0.35), lineWidth: 0.7)
+        )
+    }
+}
+
+private struct ProfileSalaryPreviewRow: View {
+    let label: String
+    let value: String
+    var highlight = false
+
+    var body: some View {
+        HStack {
+            Text(label)
+                .font(GMFont.caption(11, weight: .medium))
+                .foregroundStyle(Color.gmTextTertiary)
+            Spacer()
+            Text(value)
+                .font(GMFont.mono(highlight ? 15 : 13, weight: .bold))
+                .foregroundStyle(highlight ? Color.gmGold : Color.gmTextPrimary)
+        }
     }
 }
 
@@ -928,6 +1085,7 @@ struct ProfileEditSheet: View {
         SettingsView()
             .environmentObject(DataManager())
             .environmentObject(AssetViewModel())
+            .environmentObject(OCRViewModel())
             .environmentObject(SecurityManager())
     }
 }

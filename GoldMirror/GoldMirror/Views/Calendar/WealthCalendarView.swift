@@ -5,6 +5,7 @@ import SwiftUI
 
 struct WealthCalendarView: View {
     @EnvironmentObject var dm: DataManager
+    @EnvironmentObject var ocrVM: OCRViewModel
     @State private var displayedMonth: Date = Date()
     @State private var selectedDay: Int?    = nil
     @State private var showDayDetail: Bool  = false
@@ -520,6 +521,7 @@ struct EstimatedBalanceSection: View {
 // ─────────────────────────────────────────
 struct MonthCashflowSummary: View {
     @EnvironmentObject var dm: DataManager
+    @EnvironmentObject var ocrVM: OCRViewModel
     let month: Date
     @State private var editingTransaction: Transaction?
 
@@ -590,6 +592,7 @@ struct MonthCashflowSummary: View {
         .sheet(item: $editingTransaction) { transaction in
             IncomeExpenseInputView(editingTransaction: transaction)
                 .environmentObject(dm)
+                .environmentObject(ocrVM)
         }
     }
 
@@ -722,4 +725,5 @@ extension DataManager {
 #Preview {
     WealthCalendarView()
         .environmentObject(DataManager())
+        .environmentObject(OCRViewModel())
 }

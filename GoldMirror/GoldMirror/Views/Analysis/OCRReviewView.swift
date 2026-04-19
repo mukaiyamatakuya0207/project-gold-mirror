@@ -18,6 +18,16 @@ struct OCRReviewView: View {
     @State private var taxableIncome:   String = ""
     @State private var lifeInsurance:   String = ""
     @State private var showRawText:     Bool   = false
+    @State private var receiptDate:     Date   = Date()
+    @State private var merchantName:    String = ""
+    @State private var totalAmount:     String = ""
+    @State private var suggestedCategoryName: String = ""
+    @State private var isBusinessExpense: Bool = false
+    @State private var reimbursementStatus: ReimbursementStatus = .unreimbursed
+
+    private var isReceiptReview: Bool {
+        result.documentType == .receipt || result.totalAmount != nil || result.merchantName != nil
+    }
 
     var body: some View {
         NavigationStack {
@@ -30,30 +40,42 @@ struct OCRReviewView: View {
                         // ── Confidence Banner ──
                         ConfidenceBanner(result: editedResult)
 
-                        // ── Editable Fields ──
-                        OCRFieldsCard(
-                            annualIncome:    $annualIncome,
-                            deductionTotal:  $deductionTotal,
-                            withholdingTax:  $withholdingTax,
-                            socialInsurance: $socialInsurance,
-                            taxableIncome:   $taxableIncome,
-                            lifeInsurance:   $lifeInsurance
-                        )
-                        .padding(.horizontal, GMSpacing.md)
+                        if isReceiptReview {
+                            ReceiptFieldsCard(
+                                receiptDate: $receiptDate,
+                                merchantName: $merchantName,
+                                totalAmount: $totalAmount,
+                                suggestedCategoryName: $suggestedCategoryName,
+                                isBusinessExpense: $isBusinessExpense,
+                                reimbursementStatus: $reimbursementStatus
+                            )
+                            .padding(.horizontal, GMSpacing.md)
+                        } else {
+                            // ── Editable Fields ──
+                            OCRFieldsCard(
+                                annualIncome:    $annualIncome,
+                                deductionTotal:  $deductionTotal,
+                                withholdingTax:  $withholdingTax,
+                                socialInsurance: $socialInsurance,
+                                taxableIncome:   $taxableIncome,
+                                lifeInsurance:   $lifeInsurance
+                            )
+                            .padding(.horizontal, GMSpacing.md)
 
-                        // ── Income Rank Preview ──
-                        if let income = Double(annualIncome.filter { $0.isNumber }), income > 0 {
-                            IncomeRankPreviewCard(annualIncome: income)
-                                .padding(.horizontal, GMSpacing.md)
+                            // ── Income Rank Preview ──
+                            if let income = Double(annualIncome.filter { $0.isNumber }), income > 0 {
+                                IncomeRankPreviewCard(annualIncome: income)
+                                    .padding(.horizontal, GMSpacing.md)
+                            }
+
+                            // ── Effective Tax Rate ──
+                            TaxSummaryCard(
+                                income:        Double(annualIncome.filter { $0.isNumber }),
+                                withholding:   Double(withholdingTax.filter { $0.isNumber }),
+                                deduction:     Double(deductionTotal.filter { $0.isNumber })
+                            )
+                            .padding(.horizontal, GMSpacing.md)
                         }
-
-                        // ── Effective Tax Rate ──
-                        TaxSummaryCard(
-                            income:        Double(annualIncome.filter { $0.isNumber }),
-                            withholding:   Double(withholdingTax.filter { $0.isNumber }),
-                            deduction:     Double(deductionTotal.filter { $0.isNumber })
-                        )
-                        .padding(.horizontal, GMSpacing.md)
 
                         // ── Raw Text Toggle ──
                         DisclosureGroup(
@@ -137,6 +159,12 @@ struct OCRReviewView: View {
         socialInsurance = result.socialInsurance.map { String(Int($0)) } ?? ""
         taxableIncome   = result.taxableIncome.map   { String(Int($0)) } ?? ""
         lifeInsurance   = result.lifeInsuranceDeduction.map { String(Int($0)) } ?? ""
+        receiptDate = result.receiptDate ?? Date()
+        merchantName = result.merchantName ?? ""
+        totalAmount = result.totalAmount.map { String(Int($0)) } ?? ""
+        suggestedCategoryName = result.suggestedCategoryName ?? "その他支出"
+        isBusinessExpense = result.isBusinessExpense == true
+        reimbursementStatus = result.reimbursementStatus ?? .unreimbursed
     }
 
     private var editedResult: OCRScanResult {
@@ -147,6 +175,12 @@ struct OCRReviewView: View {
         r.socialInsurance          = Double(socialInsurance.filter { $0.isNumber })
         r.taxableIncome            = Double(taxableIncome.filter { $0.isNumber })
         r.lifeInsuranceDeduction   = Double(lifeInsurance.filter { $0.isNumber })
+        r.receiptDate              = receiptDate
+        r.merchantName             = merchantName.trimmingCharacters(in: .whitespacesAndNewlines)
+        r.totalAmount              = Double(totalAmount.filter { $0.isNumber })
+        r.suggestedCategoryName    = suggestedCategoryName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "その他支出" : suggestedCategoryName
+        r.isBusinessExpense        = isBusinessExpense
+        r.reimbursementStatus      = isBusinessExpense ? reimbursementStatus : nil
         return r
     }
 }
@@ -158,11 +192,17 @@ struct ConfidenceBanner: View {
     let result: OCRScanResult
 
     private var filledCount: Int {
-        [result.annualIncome, result.withholdingTax,
-         result.deductionTotal, result.socialInsurance]
-            .compactMap { $0 }.count
+        if result.documentType == .receipt {
+            return [result.receiptDate == nil ? nil : 1.0, result.totalAmount, result.merchantName == nil ? nil : 1.0]
+                .compactMap { $0 }
+                .count
+        }
+        return [result.annualIncome, result.withholdingTax,
+                result.deductionTotal, result.socialInsurance]
+            .compactMap { $0 }
+            .count
     }
-    private var confidence: Double { Double(filledCount) / 4.0 }
+    private var confidence: Double { Double(filledCount) / Double(result.documentType == .receipt ? 3 : 4) }
 
     var body: some View {
         HStack(spacing: GMSpacing.md) {
@@ -184,7 +224,9 @@ struct ConfidenceBanner: View {
                 Text(confidence >= 0.75 ? "高精度で認識しました" : "一部の項目を確認してください")
                     .font(GMFont.heading(14, weight: .semibold))
                     .foregroundStyle(Color.gmTextPrimary)
-                Text("\(filledCount)/4 項目を自動抽出 • 内容を確認・修正してから保存してください")
+                Text(result.documentType == .receipt
+                     ? "\(filledCount)/3 項目を自動抽出 • 金額と経費フラグを確認してください"
+                     : "\(filledCount)/4 項目を自動抽出 • 内容を確認・修正してから保存してください")
                     .font(GMFont.caption(11))
                     .foregroundStyle(Color.gmTextTertiary)
                     .lineSpacing(3)
@@ -199,6 +241,130 @@ struct ConfidenceBanner: View {
                     .strokeBorder(Color.gmGold.opacity(0.25), lineWidth: 0.8))
         )
         .padding(.horizontal, GMSpacing.md)
+    }
+}
+
+// ─────────────────────────────────────────
+// MARK: Receipt Fields Card
+// ─────────────────────────────────────────
+struct ReceiptFieldsCard: View {
+    @Binding var receiptDate: Date
+    @Binding var merchantName: String
+    @Binding var totalAmount: String
+    @Binding var suggestedCategoryName: String
+    @Binding var isBusinessExpense: Bool
+    @Binding var reimbursementStatus: ReimbursementStatus
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: GMSpacing.md) {
+            HStack {
+                Image(systemName: "receipt.fill")
+                    .foregroundStyle(Color.gmGold)
+                Text("レシート読み取り結果")
+                    .font(GMFont.heading(14, weight: .semibold))
+                    .foregroundStyle(Color.gmTextPrimary)
+            }
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text("合計金額")
+                    .font(GMFont.caption(11, weight: .semibold))
+                    .foregroundStyle(Color.gmTextTertiary)
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Text("¥")
+                        .font(GMFont.display(24, weight: .bold))
+                        .foregroundStyle(Color.gmGold)
+                    TextField("0", text: $totalAmount)
+                        .keyboardType(.numberPad)
+                        .font(GMFont.display(32, weight: .bold))
+                        .foregroundStyle(Color.gmTextPrimary)
+                        .multilineTextAlignment(.leading)
+                }
+                .padding(.vertical, 6)
+                .overlay(alignment: .bottom) {
+                    Rectangle().fill(Color.gmGold.opacity(0.45)).frame(height: 1)
+                }
+            }
+
+            VStack(spacing: GMSpacing.sm) {
+                ReceiptTextFieldRow(icon: "storefront.fill", label: "店名", text: $merchantName)
+                ReceiptTextFieldRow(icon: "tag.fill", label: "推測カテゴリ", text: $suggestedCategoryName)
+
+                HStack(spacing: GMSpacing.sm) {
+                    Image(systemName: "calendar")
+                        .foregroundStyle(Color.gmGold)
+                        .frame(width: 28)
+                    Text("日付")
+                        .font(GMFont.caption(11, weight: .medium))
+                        .foregroundStyle(Color.gmTextTertiary)
+                    Spacer()
+                    DatePicker("", selection: $receiptDate, displayedComponents: .date)
+                        .labelsHidden()
+                        .environment(\.locale, Locale(identifier: "ja_JP"))
+                        .tint(Color.gmGold)
+                }
+                .frame(minHeight: 44)
+            }
+
+            Divider().background(Color.gmGoldDim.opacity(0.35))
+
+            Toggle(isOn: $isBusinessExpense.animation(.easeInOut(duration: 0.2))) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("これは会社の経費（立替金）ですか？")
+                        .font(GMFont.body(14, weight: .semibold))
+                        .foregroundStyle(Color.gmTextPrimary)
+                    Text("オンにすると家計分析の生活費から除外できます")
+                        .font(GMFont.caption(10))
+                        .foregroundStyle(Color.gmTextTertiary)
+                }
+            }
+            .toggleStyle(SwitchToggleStyle(tint: Color.gmGold))
+
+            if isBusinessExpense {
+                Picker("精算状況", selection: $reimbursementStatus) {
+                    ForEach(ReimbursementStatus.allCases, id: \.self) { status in
+                        Label(status.rawValue, systemImage: status.icon).tag(status)
+                    }
+                }
+                .pickerStyle(.segmented)
+
+                HStack(spacing: GMSpacing.xs) {
+                    Image(systemName: reimbursementStatus.icon)
+                        .foregroundStyle(reimbursementStatus.color)
+                    Text(reimbursementStatus.rawValue)
+                        .font(GMFont.caption(12, weight: .semibold))
+                        .foregroundStyle(reimbursementStatus.color)
+                    Spacer()
+                }
+                .padding(GMSpacing.sm)
+                .background(reimbursementStatus.color.opacity(0.08))
+                .clipShape(RoundedRectangle(cornerRadius: GMRadius.sm))
+            }
+        }
+        .padding(GMSpacing.md)
+        .gmCardStyle()
+    }
+}
+
+private struct ReceiptTextFieldRow: View {
+    let icon: String
+    let label: String
+    @Binding var text: String
+
+    var body: some View {
+        HStack(spacing: GMSpacing.sm) {
+            Image(systemName: icon)
+                .foregroundStyle(Color.gmGold)
+                .frame(width: 28)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(label)
+                    .font(GMFont.caption(11, weight: .medium))
+                    .foregroundStyle(Color.gmTextTertiary)
+                TextField(label, text: $text)
+                    .font(GMFont.body(15, weight: .semibold))
+                    .foregroundStyle(Color.gmTextPrimary)
+            }
+        }
+        .frame(minHeight: 44)
     }
 }
 
