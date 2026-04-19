@@ -165,7 +165,7 @@ final class DataManager: ObservableObject {
         let todayStart = calendar.startOfDay(for: today)
         var points: [ProjectionPoint] = []
 
-        var cashBalance = totalBankBalance - transactionDelta(after: todayStart)
+        var cashBalance = totalBankBalance
         var securitiesValue = totalSecuritiesValue
         let recurringIncome = projectedRecurringIncome(fallbackMonthlyIncome: monthlyIncome)
         let variableDailyDelta = averageDailyVariableTransactionDelta()
@@ -525,7 +525,22 @@ final class DataManager: ObservableObject {
 
     func addTransaction(_ t: Transaction) {
         transactions.insert(t, at: 0)
-        applyTransactionToAccountBalance(t)
+        applyTransactionToAccountBalanceIfPosted(t)
+    }
+
+    func updateTransaction(_ transaction: Transaction) {
+        guard let idx = transactions.firstIndex(where: { $0.id == transaction.id }) else { return }
+        let previous = transactions[idx]
+        reverseTransactionFromAccountBalanceIfPosted(previous)
+        transactions[idx] = transaction
+        applyTransactionToAccountBalanceIfPosted(transaction)
+    }
+
+    func deleteTransaction(_ transaction: Transaction) {
+        guard let idx = transactions.firstIndex(where: { $0.id == transaction.id }) else { return }
+        let previous = transactions[idx]
+        reverseTransactionFromAccountBalanceIfPosted(previous)
+        transactions.remove(at: idx)
     }
 
     func transactions(on date: Date) -> [Transaction] {
@@ -682,30 +697,45 @@ final class DataManager: ObservableObject {
         .reduce(0) { $0 + $1.amount }
     }
 
-    private func applyTransactionToAccountBalance(_ transaction: Transaction) {
+    private func isPostedTransaction(_ transaction: Transaction) -> Bool {
+        let calendar = Self.jpCalendar
+        return calendar.startOfDay(for: transaction.date) <= calendar.startOfDay(for: Date())
+    }
+
+    private func applyTransactionToAccountBalanceIfPosted(_ transaction: Transaction) {
+        guard isPostedTransaction(transaction) else { return }
+        applyTransactionToAccountBalance(transaction, multiplier: 1)
+    }
+
+    private func reverseTransactionFromAccountBalanceIfPosted(_ transaction: Transaction) {
+        guard isPostedTransaction(transaction) else { return }
+        applyTransactionToAccountBalance(transaction, multiplier: -1)
+    }
+
+    private func applyTransactionToAccountBalance(_ transaction: Transaction, multiplier: Double) {
         switch transaction.type {
         case .income:
             if transaction.incomeDestinationKind == .securities {
                 let targetID = transaction.securitiesAccountID ?? securitiesAccounts.first?.id
                 guard let idx = securitiesAccounts.firstIndex(where: { $0.id == targetID }) else { return }
-                securitiesAccounts[idx].balance += transaction.amount
+                securitiesAccounts[idx].balance += transaction.amount * multiplier
                 return
             }
 
             let targetID = transaction.bankAccountID ?? bankAccounts.first?.id
             guard let idx = bankAccounts.firstIndex(where: { $0.id == targetID }) else { return }
-            bankAccounts[idx].balance += transaction.amount
+            bankAccounts[idx].balance += transaction.amount * multiplier
         case .expense:
             if transaction.isAssetAdjustment {
                 switch transaction.assetAdjustmentTargetKind {
                 case .securities:
                     let targetID = transaction.securitiesAccountID ?? securitiesAccounts.first?.id
                     guard let idx = securitiesAccounts.firstIndex(where: { $0.id == targetID }) else { return }
-                    securitiesAccounts[idx].balance -= transaction.amount
+                    securitiesAccounts[idx].balance -= transaction.amount * multiplier
                 case .bank:
                     let targetID = transaction.bankAccountID ?? bankAccounts.first?.id
                     guard let idx = bankAccounts.firstIndex(where: { $0.id == targetID }) else { return }
-                    bankAccounts[idx].balance -= transaction.amount
+                    bankAccounts[idx].balance -= transaction.amount * multiplier
                 case .none:
                     return
                 }
@@ -721,7 +751,7 @@ final class DataManager: ObservableObject {
             }
             let targetID = linkedBankID ?? bankAccounts.first?.id
             guard let idx = bankAccounts.firstIndex(where: { $0.id == targetID }) else { return }
-            bankAccounts[idx].balance -= transaction.amount
+            bankAccounts[idx].balance -= transaction.amount * multiplier
         }
     }
 

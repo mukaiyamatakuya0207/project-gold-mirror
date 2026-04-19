@@ -521,6 +521,7 @@ struct EstimatedBalanceSection: View {
 struct MonthCashflowSummary: View {
     @EnvironmentObject var dm: DataManager
     let month: Date
+    @State private var editingTransaction: Transaction?
 
     private var events: [(day: Int, total: Double)] {
         (1...31).compactMap { day -> (Int, Double)? in
@@ -554,12 +555,18 @@ struct MonthCashflowSummary: View {
                     let snap = dm.daySnapshot(day: event.day, month: month)
                     VStack(alignment: .leading, spacing: 2) {
                         ForEach(snap.scheduledIncomes.prefix(1)) { income in
-                            Text(income.name).font(GMFont.caption(11))
-                                .foregroundStyle(Color.gmPositive).lineLimit(1)
+                            scheduleText(
+                                name: income.name,
+                                color: Color.gmPositive,
+                                transactionID: income.transactionID
+                            )
                         }
                         ForEach(snap.scheduledExpenses.prefix(2)) { exp in
-                            Text(exp.name).font(GMFont.caption(11))
-                                .foregroundStyle(Color.gmTextSecondary).lineLimit(1)
+                            scheduleText(
+                                name: exp.name,
+                                color: Color.gmTextSecondary,
+                                transactionID: exp.transactionID
+                            )
                         }
                         let eventCount = snap.scheduledIncomes.count + snap.scheduledExpenses.count
                         if eventCount > 3 {
@@ -580,6 +587,37 @@ struct MonthCashflowSummary: View {
         }
         .padding(GMSpacing.md)
         .gmCardStyle()
+        .sheet(item: $editingTransaction) { transaction in
+            IncomeExpenseInputView(editingTransaction: transaction)
+                .environmentObject(dm)
+        }
+    }
+
+    @ViewBuilder
+    private func scheduleText(name: String, color: Color, transactionID: UUID?) -> some View {
+        if let transactionID,
+           let transaction = dm.transactions.first(where: { $0.id == transactionID }) {
+            Button {
+                editingTransaction = transaction
+            } label: {
+                HStack(spacing: 4) {
+                    Text(name)
+                        .font(GMFont.caption(11))
+                        .foregroundStyle(color)
+                        .lineLimit(1)
+                    Image(systemName: "pencil")
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundStyle(Color.gmGold.opacity(0.8))
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+        } else {
+            Text(name)
+                .font(GMFont.caption(11))
+                .foregroundStyle(color)
+                .lineLimit(1)
+        }
     }
 }
 
@@ -634,6 +672,7 @@ extension DataManager {
             switch transaction.type {
             case .income:
                 incomes.append(ScheduledIncome(
+                    transactionID: transaction.id,
                     name: transaction.memo.isEmpty ? transaction.displayCategoryName : transaction.memo,
                     amount: transaction.amount,
                     category: incomeCategory(for: transaction.category),
@@ -642,6 +681,7 @@ extension DataManager {
                 ))
             case .expense:
                 expenses.append(ScheduledExpense(
+                    transactionID: transaction.id,
                     name: transaction.memo.isEmpty ? transaction.displayCategoryName : transaction.memo,
                     amount: transaction.amount,
                     category: .transaction,
@@ -651,21 +691,9 @@ extension DataManager {
             }
         }
 
-        // その日までに発生する累積支出を計算
-        let cumulativeExpenses = (1...max(day,1)).reduce(0.0) { sum, d in
-            let dCards = cardPaymentSchedules.filter { schedule in
-                let scheduleDay = cal.component(.day, from: schedule.paymentDate)
-                return scheduleDay == d && cal.isDate(schedule.paymentDate, equalTo: month, toGranularity: .month)
-            }.reduce(0) { $0 + $1.amount }
-            var dComps = cal.dateComponents([.year, .month], from: month)
-            dComps.day = d
-            let currentDate = cal.date(from: dComps) ?? month
-            let dRecurringBank = recurringBankWithdrawalAmount(on: currentDate)
-            return sum + dCards + dRecurringBank
-        }
-
-        let projectedCash   = max(totalBankBalance - transactionDelta(after: dateStart) - cumulativeExpenses, 0)
-        let projectedAssets = max(projectedCash + totalSecuritiesValue, 0)
+        let estimated = estimatedBalances(for: dateStart)
+        let projectedCash = max(estimated.totalBankBalance, 0)
+        let projectedAssets = max(estimated.totalAssets, 0)
 
         return DayFinancialSnapshot(
             date: date,

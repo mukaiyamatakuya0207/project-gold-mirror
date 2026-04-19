@@ -200,6 +200,7 @@ struct Transaction: Identifiable, Codable {
 struct IncomeExpenseInputView: View {
     @EnvironmentObject var dm: DataManager
     @Environment(\.dismiss) private var dismiss
+    let editingTransaction: Transaction?
 
     @State private var transactionType: TransactionType = .expense
     @State private var amountText = ""
@@ -216,6 +217,11 @@ struct IncomeExpenseInputView: View {
     @State private var selectedAdjustmentBankAccountID: UUID?
     @State private var selectedAdjustmentSecuritiesAccountID: UUID?
     @State private var selectedExpenseCategoryID: UUID?
+    @State private var didPopulateEditingTransaction = false
+
+    init(editingTransaction: Transaction? = nil) {
+        self.editingTransaction = editingTransaction
+    }
 
     private var categories: [TransactionCategory] {
         TransactionCategory.incomeCategories
@@ -248,6 +254,10 @@ struct IncomeExpenseInputView: View {
         NavigationStack {
             ZStack {
                 Color.gmBackground.ignoresSafeArea()
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        dismissKeyboard()
+                    }
 
                 ScrollView(showsIndicators: false) {
                     VStack(spacing: GMSpacing.lg) {
@@ -557,6 +567,25 @@ struct IncomeExpenseInputView: View {
                         }
                         .padding(.horizontal, GMSpacing.md)
 
+                        if editingTransaction != nil {
+                            Button(role: .destructive) {
+                                deleteTransaction()
+                            } label: {
+                                HStack(spacing: GMSpacing.sm) {
+                                    Image(systemName: "trash.fill")
+                                        .font(.system(size: 14, weight: .semibold))
+                                    Text("この収支を削除")
+                                        .font(GMFont.caption(13, weight: .semibold))
+                                }
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 12)
+                                .foregroundStyle(Color.gmNegative)
+                                .background(Color.gmNegative.opacity(0.12))
+                                .clipShape(RoundedRectangle(cornerRadius: GMRadius.md))
+                            }
+                            .padding(.horizontal, GMSpacing.md)
+                        }
+
                         // ── Save Button ──
                         Button {
                             saveTransaction()
@@ -593,7 +622,7 @@ struct IncomeExpenseInputView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .principal) {
-                    Text("収支を記録")
+                    Text(editingTransaction == nil ? "収支を記録" : "収支を編集")
                         .font(GMFont.heading(16, weight: .semibold))
                         .foregroundStyle(GMGradient.goldHorizontal)
                 }
@@ -604,16 +633,29 @@ struct IncomeExpenseInputView: View {
                             .foregroundStyle(Color.gmTextTertiary)
                     }
                 }
+                ToolbarItemGroup(placement: .keyboard) {
+                    Spacer()
+                    Button("完了") {
+                        dismissKeyboard()
+                    }
+                    .foregroundStyle(Color.gmGold)
+                    .fontWeight(.semibold)
+                }
             }
         }
         .presentationDetents([.medium, .large])
         .presentationDragIndicator(.visible)
         .presentationBackground(Color.gmBackground)
         .onAppear {
-            ensureExpenseCategorySelection()
-            ensureCreditCardSelection()
-            ensureIncomeDestinationSelection()
-            ensureAssetAdjustmentSelection()
+            if let editingTransaction, !didPopulateEditingTransaction {
+                populate(from: editingTransaction)
+                didPopulateEditingTransaction = true
+            } else {
+                ensureExpenseCategorySelection()
+                ensureCreditCardSelection()
+                ensureIncomeDestinationSelection()
+                ensureAssetAdjustmentSelection()
+            }
         }
         .onChange(of: dm.expenseCategories.map(\.id)) { _, _ in
             ensureExpenseCategorySelection()
@@ -641,6 +683,15 @@ struct IncomeExpenseInputView: View {
             }
         }
         .environment(\.locale, Locale(identifier: "ja_JP"))
+    }
+
+    private func dismissKeyboard() {
+        UIApplication.shared.sendAction(
+            #selector(UIResponder.resignFirstResponder),
+            to: nil,
+            from: nil,
+            for: nil
+        )
     }
 
     private var creditCardSelectionBinding: Binding<UUID?> {
@@ -844,6 +895,7 @@ struct IncomeExpenseInputView: View {
             finalMemo = memo
         }
         let t = Transaction(
+            id: editingTransaction?.id ?? UUID(),
             type: transactionType,
             amount: parsedAmount,
             category: transactionCategory,
@@ -863,12 +915,53 @@ struct IncomeExpenseInputView: View {
             categoryIconName: transactionType == .expense ? expenseCategory?.iconName : nil,
             categoryColorHex: transactionType == .expense ? expenseCategory?.colorHex : nil
         )
-        // Persist via DataManager
-        dm.addTransaction(t)
+        if editingTransaction == nil {
+            dm.addTransaction(t)
+        } else {
+            dm.updateTransaction(t)
+        }
         // Haptic feedback
         let gen = UINotificationFeedbackGenerator()
         gen.notificationOccurred(.success)
         dismiss()
+    }
+
+    private func deleteTransaction() {
+        guard let editingTransaction else { return }
+        dm.deleteTransaction(editingTransaction)
+        let gen = UINotificationFeedbackGenerator()
+        gen.notificationOccurred(.success)
+        dismiss()
+    }
+
+    private func populate(from transaction: Transaction) {
+        transactionType = transaction.type
+        amountText = "\(Int(transaction.amount))"
+        selectedCategory = transaction.category
+        selectedDate = transaction.date
+        memo = transaction.memo
+        selectedPaymentMethod = transaction.paymentMethod
+        selectedCreditCardID = transaction.creditCardID
+        selectedIncomeBankAccountID = transaction.bankAccountID
+        selectedIncomeSecuritiesAccountID = transaction.securitiesAccountID
+        selectedAdjustmentTargetKind = transaction.assetAdjustmentTargetKind ?? .securities
+        selectedAdjustmentBankAccountID = transaction.bankAccountID
+        selectedAdjustmentSecuritiesAccountID = transaction.securitiesAccountID
+
+        if transaction.type == .expense {
+            if transaction.isAssetAdjustment {
+                selectedExpenseCategoryID = dm.expenseCategories.first(where: { $0.isAssetAdjustment })?.id
+            } else if let categoryName = transaction.categoryName,
+                      let category = dm.expenseCategories.first(where: { $0.name == categoryName }) {
+                selectedExpenseCategoryID = category.id
+            } else {
+                ensureExpenseCategorySelection()
+            }
+        }
+
+        ensureCreditCardSelection()
+        ensureIncomeDestinationSelection()
+        ensureAssetAdjustmentSelection()
     }
 }
 
@@ -999,8 +1092,7 @@ struct StableAmountTextField: UIViewRepresentable {
         textField.backgroundColor = .clear
         textField.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         textField.setContentHuggingPriority(.defaultLow, for: .horizontal)
-        textField.inputAssistantItem.leadingBarButtonGroups = []
-        textField.inputAssistantItem.trailingBarButtonGroups = []
+        textField.inputAccessoryView = context.coordinator.makeToolbar()
         textField.addTarget(context.coordinator, action: #selector(Coordinator.textChanged(_:)), for: .editingChanged)
         return textField
     }
@@ -1025,6 +1117,30 @@ struct StableAmountTextField: UIViewRepresentable {
 
         @objc func textChanged(_ sender: UITextField) {
             text = sender.text ?? ""
+        }
+
+        func makeToolbar() -> UIToolbar {
+            let toolbar = UIToolbar()
+            toolbar.sizeToFit()
+            toolbar.items = [
+                UIBarButtonItem(systemItem: .flexibleSpace),
+                UIBarButtonItem(
+                    title: "完了",
+                    style: .plain,
+                    target: self,
+                    action: #selector(doneTapped)
+                )
+            ]
+            return toolbar
+        }
+
+        @objc private func doneTapped() {
+            UIApplication.shared.sendAction(
+                #selector(UIResponder.resignFirstResponder),
+                to: nil,
+                from: nil,
+                for: nil
+            )
         }
 
         func textField(

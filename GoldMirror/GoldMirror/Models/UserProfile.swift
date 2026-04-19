@@ -188,6 +188,7 @@ struct DayFinancialSnapshot {
 
 struct ScheduledExpense: Identifiable {
     let id = UUID()
+    var transactionID: UUID? = nil
     let name: String
     let amount: Double
     let category: ExpenseCategory
@@ -204,6 +205,7 @@ struct ScheduledExpense: Identifiable {
 
 struct ScheduledIncome: Identifiable {
     let id = UUID()
+    var transactionID: UUID? = nil
     let name: String
     let amount: Double
     let category: IncomeCategory
