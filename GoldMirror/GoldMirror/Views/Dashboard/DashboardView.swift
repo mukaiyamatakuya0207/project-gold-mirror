@@ -401,8 +401,8 @@ struct BankAccountRow: View {
                     .foregroundStyle(Color.gmGold)
             }
             VStack(alignment: .leading, spacing: 3) {
-                Text(account.name).font(GMFont.body(14, weight: .medium)).foregroundStyle(Color.gmTextPrimary)
-                Text(account.bankName).font(GMFont.caption(11)).foregroundStyle(Color.gmTextTertiary)
+                Text(account.bankName).font(GMFont.body(14, weight: .medium)).foregroundStyle(Color.gmTextPrimary)
+                Text(account.name).font(GMFont.caption(11)).foregroundStyle(Color.gmTextTertiary)
             }
             Spacer()
             VStack(alignment: .trailing, spacing: 2) {
@@ -431,8 +431,8 @@ struct SecuritiesAccountRow: View {
                     .foregroundStyle(account.profitLoss >= 0 ? Color.gmPositive : Color.gmNegative)
             }
             VStack(alignment: .leading, spacing: 3) {
-                Text(account.name).font(GMFont.body(14, weight: .medium)).foregroundStyle(Color.gmTextPrimary)
-                Text(account.brokerageName).font(GMFont.caption(11)).foregroundStyle(Color.gmTextTertiary)
+                Text(account.brokerageName).font(GMFont.body(14, weight: .medium)).foregroundStyle(Color.gmTextPrimary)
+                Text(account.name).font(GMFont.caption(11)).foregroundStyle(Color.gmTextTertiary)
             }
             Spacer()
             VStack(alignment: .trailing, spacing: 3) {

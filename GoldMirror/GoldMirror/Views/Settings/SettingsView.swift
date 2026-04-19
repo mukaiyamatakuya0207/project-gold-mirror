@@ -6,12 +6,19 @@ import SwiftUI
 struct SettingsView: View {
     @EnvironmentObject var dm: DataManager
     @EnvironmentObject var vm: AssetViewModel
+    @EnvironmentObject var securityManager: SecurityManager
     @StateObject private var nm = NotificationManager.shared
 
     @State private var showProfileEdit = false
     @State private var displayName     = "Gold Mirror User"
     @State private var tagline         = "資産形成を楽しもう"
     @State private var isPublic        = false
+    @State private var showDataExporter = false
+    @State private var showDataImporter = false
+    @State private var exportDocument = GoldMirrorDataDocument()
+    @State private var pendingImportData: Data?
+    @State private var showImportConfirm = false
+    @State private var dataTransferMessage: String?
 
     var body: some View {
         ZStack {
@@ -217,11 +224,21 @@ struct SettingsView: View {
 
                     // ── App Settings ──
                     SettingsSection(title: "アプリ設定", icon: "gearshape.fill") {
-                        SettingsNavigationRow(
+                        SettingsToggleRow(
                             icon: "lock.fill",
                             iconColor: Color.gmGold,
                             title: "セキュリティ",
-                            subtitle: "Face ID / Touch ID"
+                            subtitle: "\(securityManager.biometryLabel)でアプリをロック",
+                            isOn: Binding(
+                                get: { securityManager.isBiometricEnabled },
+                                set: { isEnabled in
+                                    if isEnabled {
+                                        securityManager.enableBiometricLock()
+                                    } else {
+                                        securityManager.disableBiometricLock()
+                                    }
+                                }
+                            )
                         ) {}
 
                         GMSettingsDivider()
@@ -229,9 +246,22 @@ struct SettingsView: View {
                         SettingsNavigationRow(
                             icon: "icloud.fill",
                             iconColor: Color(hex: "#4FC3F7"),
-                            title: "データバックアップ",
-                            subtitle: "iCloud に同期"
-                        ) {}
+                            title: "データ書き出し",
+                            subtitle: ".gmdataファイルとして保存"
+                        ) {
+                            exportCurrentData()
+                        }
+
+                        GMSettingsDivider()
+
+                        SettingsNavigationRow(
+                            icon: "square.and.arrow.down.fill",
+                            iconColor: Color(hex: "#4FC3F7"),
+                            title: "データ読み込み",
+                            subtitle: ".gmdataファイルから復元"
+                        ) {
+                            showDataImporter = true
+                        }
 
                         GMSettingsDivider()
 
@@ -267,6 +297,94 @@ struct SettingsView: View {
         }
         .overlay(alignment: .top) {
             SettingsPageHeader()
+        }
+        .alert("セキュリティエラー", isPresented: .init(
+            get: { securityManager.errorMessage != nil },
+            set: { if !$0 { securityManager.errorMessage = nil } }
+        )) {
+            Button("OK") { securityManager.errorMessage = nil }
+        } message: {
+            Text(securityManager.errorMessage ?? "")
+        }
+        .fileExporter(
+            isPresented: $showDataExporter,
+            document: exportDocument,
+            contentType: .goldMirrorData,
+            defaultFilename: defaultExportFilename
+        ) { result in
+            switch result {
+            case .success:
+                dataTransferMessage = "データを書き出しました。"
+            case .failure(let error):
+                dataTransferMessage = "書き出しに失敗しました: \(error.localizedDescription)"
+            }
+        }
+        .fileImporter(
+            isPresented: $showDataImporter,
+            allowedContentTypes: [.goldMirrorData],
+            allowsMultipleSelection: false
+        ) { result in
+            handleImportSelection(result)
+        }
+        .alert("現在のデータは上書きされますがよろしいですか？", isPresented: $showImportConfirm) {
+            Button("キャンセル", role: .cancel) {
+                pendingImportData = nil
+            }
+            Button("読み込む", role: .destructive) {
+                importPendingData()
+            }
+        } message: {
+            Text("銀行・証券口座、カード、収支履歴、カテゴリ設定などが.gmdataファイルの内容に置き換わります。")
+        }
+        .alert("データ移行", isPresented: .init(
+            get: { dataTransferMessage != nil },
+            set: { if !$0 { dataTransferMessage = nil } }
+        )) {
+            Button("OK") { dataTransferMessage = nil }
+        } message: {
+            Text(dataTransferMessage ?? "")
+        }
+    }
+
+    private var defaultExportFilename: String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "ja_JP")
+        formatter.dateFormat = "yyyyMMdd-HHmm"
+        return "GoldMirror-\(formatter.string(from: Date())).gmdata"
+    }
+
+    private func exportCurrentData() {
+        do {
+            exportDocument = GoldMirrorDataDocument(data: try dm.exportGMData())
+            showDataExporter = true
+        } catch {
+            dataTransferMessage = "書き出しデータの作成に失敗しました: \(error.localizedDescription)"
+        }
+    }
+
+    private func handleImportSelection(_ result: Result<[URL], Error>) {
+        do {
+            guard let url = try result.get().first else { return }
+            let canAccess = url.startAccessingSecurityScopedResource()
+            defer {
+                if canAccess { url.stopAccessingSecurityScopedResource() }
+            }
+            pendingImportData = try Data(contentsOf: url)
+            showImportConfirm = true
+        } catch {
+            dataTransferMessage = "読み込みに失敗しました: \(error.localizedDescription)"
+        }
+    }
+
+    private func importPendingData() {
+        guard let pendingImportData else { return }
+        do {
+            try dm.importGMData(pendingImportData)
+            self.pendingImportData = nil
+            dataTransferMessage = "データを読み込みました。"
+        } catch {
+            self.pendingImportData = nil
+            dataTransferMessage = "データの解析に失敗しました: \(error.localizedDescription)"
         }
     }
 }
@@ -361,7 +479,9 @@ struct SettingsProfileCard: View {
                         .clipShape(Circle())
                         .overlay(Circle().stroke(Color.gmGoldDim.opacity(0.4), lineWidth: 0.8))
                 }
+                .contentShape(Circle())
             }
+            .contentShape(Rectangle())
         }
         .padding(GMSpacing.lg)
         .background(
@@ -456,7 +576,9 @@ struct SettingsToggleRow: View {
                 .labelsHidden()
                 .onChange(of: isOn) { _, _ in onChange() }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.vertical, GMSpacing.xs)
+        .contentShape(Rectangle())
     }
 }
 
@@ -491,7 +613,9 @@ struct SettingsNavigationRow: View {
                     .font(.system(size: 12))
                     .foregroundStyle(Color.gmTextTertiary)
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.vertical, GMSpacing.xs)
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
     }
@@ -654,5 +778,6 @@ struct ProfileEditSheet: View {
         SettingsView()
             .environmentObject(DataManager())
             .environmentObject(AssetViewModel())
+            .environmentObject(SecurityManager())
     }
 }

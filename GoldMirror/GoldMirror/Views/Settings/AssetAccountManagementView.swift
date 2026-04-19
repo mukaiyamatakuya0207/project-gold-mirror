@@ -226,8 +226,8 @@ struct BankManagementRow: View {
         ManagementRowShell(
             icon: account.iconName,
             iconColor: .gmGold,
-            title: account.name,
-            subtitle: "\(account.bankName) / \(account.accountNumber)",
+            title: account.bankName,
+            subtitle: "\(account.name) / \(account.accountNumber)",
             amount: account.balance,
             onEdit: onEdit,
             onDelete: onDelete
@@ -244,8 +244,8 @@ struct SecuritiesManagementRow: View {
         ManagementRowShell(
             icon: account.iconName,
             iconColor: account.profitLoss >= 0 ? .gmPositive : .gmNegative,
-            title: account.name,
-            subtitle: "\(account.brokerageName) / 損益 \(account.profitLoss.jpyFormatted)",
+            title: account.brokerageName,
+            subtitle: "\(account.name) / 損益 \(account.profitLoss.jpyFormatted)",
             amount: account.evaluationAmount,
             onEdit: onEdit,
             onDelete: onDelete
@@ -335,8 +335,8 @@ struct BankAccountFormSheet: View {
         NavigationStack {
             GMFormContainer(title: account == nil ? "銀行口座を追加" : "銀行口座を編集") {
                 Section {
-                    GMFormField(label: "口座名", placeholder: "生活費口座", text: $name)
                     GMFormField(label: "銀行名", placeholder: "銀行名", text: $bankName)
+                    GMFormField(label: "口座名", placeholder: "生活費口座", text: $name)
                     GMFormField(label: "残高（円）", placeholder: "0", text: $balanceText)
                         .keyboardType(.numberPad)
                     GMFormField(label: "口座番号メモ", placeholder: "****", text: $accountNumber)
@@ -387,8 +387,8 @@ struct SecuritiesAccountFormSheet: View {
         NavigationStack {
             GMFormContainer(title: account == nil ? "証券口座を追加" : "証券口座を編集") {
                 Section {
-                    GMFormField(label: "口座名", placeholder: "NISA口座", text: $name)
                     GMFormField(label: "証券会社名", placeholder: "証券会社名", text: $brokerageName)
+                    GMFormField(label: "口座名", placeholder: "NISA口座", text: $name)
                     GMFormField(label: "現在の評価額（円）", placeholder: "0", text: $evaluationText)
                         .keyboardType(.numberPad)
                     GMFormField(label: "取得額（円）", placeholder: "0", text: $purchaseText)

@@ -9,6 +9,20 @@ import Combine
 final class DataManager: ObservableObject {
     private static var jpCalendar: Calendar { .gmJapan }
     private static let expenseCategoriesStorageKey = "GoldMirror.expenseCategories.v1"
+    private static let backupSchemaVersion = 1
+
+    struct GoldMirrorBackup: Codable {
+        let schemaVersion: Int
+        let exportedAt: Date
+        var fixedCosts: [FixedCost]
+        var subscriptions: [Subscription]
+        var bankAccounts: [BankAccount]
+        var securitiesAccounts: [SecuritiesAccount]
+        var creditCards: [CreditCard]
+        var cardPaymentSchedules: [CardPaymentSchedule]
+        var expenseCategories: [Category]
+        var transactions: [Transaction]
+    }
 
     // ─────────────────────────────────────────
     // MARK: Published State
@@ -331,6 +345,45 @@ final class DataManager: ObservableObject {
         expenseCategories = Category.defaultExpenseCategories
     }
 
+    func exportGMData() throws -> Data {
+        let backup = GoldMirrorBackup(
+            schemaVersion: Self.backupSchemaVersion,
+            exportedAt: Date(),
+            fixedCosts: fixedCosts,
+            subscriptions: subscriptions,
+            bankAccounts: bankAccounts,
+            securitiesAccounts: securitiesAccounts,
+            creditCards: creditCards,
+            cardPaymentSchedules: cardPaymentSchedules,
+            expenseCategories: expenseCategories,
+            transactions: transactions
+        )
+
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        encoder.dateEncodingStrategy = .iso8601
+        return try encoder.encode(backup)
+    }
+
+    func importGMData(_ data: Data) throws {
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        let backup = try decoder.decode(GoldMirrorBackup.self, from: data)
+
+        objectWillChange.send()
+        fixedCosts = backup.fixedCosts
+        subscriptions = backup.subscriptions
+        bankAccounts = backup.bankAccounts
+        securitiesAccounts = backup.securitiesAccounts
+        creditCards = backup.creditCards
+        cardPaymentSchedules = backup.cardPaymentSchedules
+        expenseCategories = backup.expenseCategories.isEmpty
+            ? Category.defaultExpenseCategories
+            : backup.expenseCategories
+        transactions = backup.transactions
+        saveExpenseCategories()
+    }
+
     private func loadExpenseCategories() {
         guard let data = UserDefaults.standard.data(forKey: Self.expenseCategoriesStorageKey),
               let decoded = try? JSONDecoder().decode([Category].self, from: data),
@@ -508,16 +561,16 @@ final class DataManager: ObservableObject {
             bankAccounts: bankAccounts.map { account in
                 EstimatedAccountBalance(
                     id: account.id,
-                    title: account.name,
-                    subtitle: account.bankName,
+                    title: account.bankName,
+                    subtitle: account.name,
                     amount: bankBalances[account.id] ?? account.balance
                 )
             },
             securitiesAccounts: securitiesAccounts.map { account in
                 EstimatedAccountBalance(
                     id: account.id,
-                    title: account.name,
-                    subtitle: account.brokerageName,
+                    title: account.brokerageName,
+                    subtitle: account.name,
                     amount: securitiesBalances[account.id] ?? account.balance
                 )
             }

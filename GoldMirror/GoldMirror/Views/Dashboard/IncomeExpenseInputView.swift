@@ -6,7 +6,7 @@ import SwiftUI
 // ─────────────────────────────────────────
 // MARK: Transaction Model
 // ─────────────────────────────────────────
-enum TransactionType: String, CaseIterable {
+enum TransactionType: String, CaseIterable, Codable {
     case income  = "収入"
     case expense = "支出"
 
@@ -24,7 +24,7 @@ enum TransactionType: String, CaseIterable {
     }
 }
 
-enum TransactionCategory: String, CaseIterable {
+enum TransactionCategory: String, CaseIterable, Codable {
     // income
     case salary    = "給与"
     case bonus     = "ボーナス"
@@ -80,7 +80,7 @@ enum TransactionCategory: String, CaseIterable {
     }
 }
 
-enum PaymentMethod: String, CaseIterable {
+enum PaymentMethod: String, CaseIterable, Codable {
     case cash = "現金"
     case creditCard = "クレジットカード"
     case electronicMoney = "電子マネー"
@@ -100,12 +100,12 @@ enum PaymentMethod: String, CaseIterable {
     }
 }
 
-enum IncomeDestinationKind {
+enum IncomeDestinationKind: String, Codable {
     case bank
     case securities
 }
 
-enum AssetAccountKind {
+enum AssetAccountKind: String, Codable {
     case bank
     case securities
 
@@ -117,8 +117,8 @@ enum AssetAccountKind {
     }
 }
 
-struct Transaction: Identifiable {
-    let id = UUID()
+struct Transaction: Identifiable, Codable {
+    let id: UUID
     var type: TransactionType
     var amount: Double
     var category: TransactionCategory
@@ -137,6 +137,48 @@ struct Transaction: Identifiable {
     var categoryName: String? = nil
     var categoryIconName: String? = nil
     var categoryColorHex: String? = nil
+
+    init(
+        id: UUID = UUID(),
+        type: TransactionType,
+        amount: Double,
+        category: TransactionCategory,
+        date: Date,
+        memo: String,
+        paymentMethod: PaymentMethod = .cash,
+        creditCardID: UUID? = nil,
+        creditCardName: String? = nil,
+        bankAccountID: UUID? = nil,
+        bankAccountName: String? = nil,
+        securitiesAccountID: UUID? = nil,
+        securitiesAccountName: String? = nil,
+        incomeDestinationKind: IncomeDestinationKind = .bank,
+        isAssetAdjustment: Bool = false,
+        assetAdjustmentTargetKind: AssetAccountKind? = nil,
+        categoryName: String? = nil,
+        categoryIconName: String? = nil,
+        categoryColorHex: String? = nil
+    ) {
+        self.id = id
+        self.type = type
+        self.amount = amount
+        self.category = category
+        self.date = date
+        self.memo = memo
+        self.paymentMethod = paymentMethod
+        self.creditCardID = creditCardID
+        self.creditCardName = creditCardName
+        self.bankAccountID = bankAccountID
+        self.bankAccountName = bankAccountName
+        self.securitiesAccountID = securitiesAccountID
+        self.securitiesAccountName = securitiesAccountName
+        self.incomeDestinationKind = incomeDestinationKind
+        self.isAssetAdjustment = isAssetAdjustment
+        self.assetAdjustmentTargetKind = assetAdjustmentTargetKind
+        self.categoryName = categoryName
+        self.categoryIconName = categoryIconName
+        self.categoryColorHex = categoryColorHex
+    }
 
     var displayCategoryName: String {
         categoryName ?? category.rawValue

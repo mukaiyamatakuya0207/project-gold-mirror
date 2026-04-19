@@ -127,9 +127,6 @@ struct CategoryManagementRow: View {
                     Text(category.name)
                         .font(GMFont.body(14, weight: .semibold))
                         .foregroundStyle(Color.gmTextPrimary)
-                    Text(category.isAssetAdjustment ? "資産評価調整カテゴリ" : category.iconName)
-                        .font(GMFont.caption(11))
-                        .foregroundStyle(Color.gmTextTertiary)
                 }
                 Spacer()
                 Image(systemName: "pencil")
@@ -137,6 +134,8 @@ struct CategoryManagementRow: View {
                     .foregroundStyle(Color.gmGold)
             }
             .padding(GMSpacing.md)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
             .gmCardStyle()
         }
         .buttonStyle(.plain)
@@ -310,5 +309,6 @@ struct CategoryFormSheet: View {
     NavigationStack {
         CategoryManagementView()
             .environmentObject(DataManager())
+            .environmentObject(SecurityManager())
     }
 }

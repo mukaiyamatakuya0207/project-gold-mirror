@@ -8,12 +8,14 @@ import UserNotifications
 struct GoldMirrorApp: App {
     @StateObject private var dataManager  = DataManager()
     @StateObject private var ocrViewModel = OCRViewModel()
+    @StateObject private var securityManager = SecurityManager()
 
     var body: some Scene {
         WindowGroup {
-            MainTabView()
+            GoldMirrorSecureRootView()
                 .environmentObject(dataManager)
                 .environmentObject(ocrViewModel)
+                .environmentObject(securityManager)
                 .preferredColorScheme(.dark)
                 .tint(Color.gmGold)
                 .task {

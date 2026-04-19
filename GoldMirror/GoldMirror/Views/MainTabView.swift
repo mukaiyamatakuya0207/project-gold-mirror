@@ -298,6 +298,8 @@ struct GMIPadSidebar: View {
             }
             .padding(.horizontal, GMSpacing.md)
             .padding(.vertical, 10)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
             .background(selected ? Color.gmSurfaceElevated : Color.clear)
             .clipShape(RoundedRectangle(cornerRadius: GMRadius.md))
             .overlay(
@@ -399,7 +401,8 @@ struct GMCustomTabBar: View {
 // MARK: Preview
 // ─────────────────────────────────────────
 #Preview {
-    MainTabView()
-        .environmentObject(DataManager())
-        .environmentObject(OCRViewModel())
+        MainTabView()
+            .environmentObject(DataManager())
+            .environmentObject(OCRViewModel())
+            .environmentObject(SecurityManager())
 }

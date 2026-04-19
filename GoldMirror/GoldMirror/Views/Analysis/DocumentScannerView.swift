@@ -3,6 +3,7 @@
 // Uses DataScannerViewController wrapped in UIViewControllerRepresentable.
 
 import SwiftUI
+@preconcurrency import AVFoundation
 import VisionKit
 import Vision
 
@@ -13,8 +14,34 @@ struct DocumentScannerView: View {
     @EnvironmentObject var ocrVM: OCRViewModel
     @State private var showImagePicker = false
     @State private var showLiveScanner = false
+    @State private var showCameraPermissionAlert = false
+    @State private var cameraPermissionMessage = ""
     @State private var selectedDocType: TaxDocumentType = .withholdingSlip
     @State private var animatePulse = false
+
+    private func openCamera() {
+        switch AVCaptureDevice.authorizationStatus(for: .video) {
+        case .authorized:
+            showLiveScanner = true
+        case .notDetermined:
+            AVCaptureDevice.requestAccess(for: .video) { granted in
+                DispatchQueue.main.async {
+                    if granted {
+                        showLiveScanner = true
+                    } else {
+                        cameraPermissionMessage = "設定アプリでカメラへのアクセスを許可してください。"
+                        showCameraPermissionAlert = true
+                    }
+                }
+            }
+        case .denied, .restricted:
+            cameraPermissionMessage = "カメラへのアクセスが許可されていません。設定アプリでアクセスを許可してください。"
+            showCameraPermissionAlert = true
+        @unknown default:
+            cameraPermissionMessage = "カメラを利用できません。端末の設定を確認してください。"
+            showCameraPermissionAlert = true
+        }
+    }
 
     var body: some View {
         NavigationStack {
@@ -37,11 +64,7 @@ struct DocumentScannerView: View {
                             isProcessing: ocrVM.isProcessing,
                             progress: ocrVM.recognitionProgress,
                             onCamera: {
-                                if ocrVM.isScannerAvailable {
-                                    showLiveScanner = true
-                                } else {
-                                    showImagePicker = true
-                                }
+                                openCamera()
                             },
                             onLibrary: {
                                 showImagePicker = true
@@ -82,6 +105,13 @@ struct DocumentScannerView: View {
                     onCapture: { image in
                         showLiveScanner = false
                         ocrVM.recognizeText(from: image, documentType: selectedDocType)
+                    },
+                    onCancel: {
+                        showLiveScanner = false
+                    },
+                    onError: { message in
+                        showLiveScanner = false
+                        ocrVM.errorMessage = message
                     }
                 )
             }
@@ -105,6 +135,11 @@ struct DocumentScannerView: View {
                 Button("OK") { ocrVM.errorMessage = nil }
             } message: {
                 Text(ocrVM.errorMessage ?? "")
+            }
+            .alert("カメラを使用できません", isPresented: $showCameraPermissionAlert) {
+                Button("OK") {}
+            } message: {
+                Text(cameraPermissionMessage)
             }
         }
     }
@@ -430,67 +465,247 @@ struct ScanHistoryCard: View {
 struct LiveDocumentScanner: UIViewControllerRepresentable {
     let docType: TaxDocumentType
     let onCapture: (UIImage) -> Void
-
-    func makeCoordinator() -> Coordinator { Coordinator(onCapture: onCapture) }
+    let onCancel: () -> Void
+    let onError: (String) -> Void
 
     func makeUIViewController(context: Context) -> UIViewController {
-        guard DataScannerViewController.isSupported && DataScannerViewController.isAvailable else {
-            // フォールバック：シンプルなカメラピッカー
-            let picker = UIImagePickerController()
-            picker.sourceType = .camera
-            picker.delegate = context.coordinator
-            return picker
-        }
-
-        let scanner = DataScannerViewController(
-            recognizedDataTypes: [.text()],
-            qualityLevel: .accurate,
-            recognizesMultipleItems: true,
-            isHighFrameRateTrackingEnabled: false,
-            isHighlightingEnabled: true
+        StableDocumentCameraViewController(
+            onCapture: onCapture,
+            onCancel: onCancel,
+            onError: onError
         )
-        scanner.delegate = context.coordinator
-
-        // ゴールドテーマのオーバーレイ
-        scanner.overlayContainerView.subviews.forEach { $0.removeFromSuperview() }
-        let overlay = ScannerOverlayView()
-        overlay.frame = scanner.overlayContainerView.bounds
-        overlay.autoresizingMask = [.flexibleWidth, .flexibleHeight]
-        scanner.overlayContainerView.addSubview(overlay)
-
-        try? scanner.startScanning()
-        return scanner
     }
 
     func updateUIViewController(_ uiViewController: UIViewController, context: Context) {}
+}
 
-    class Coordinator: NSObject, DataScannerViewControllerDelegate,
-                       UIImagePickerControllerDelegate, UINavigationControllerDelegate {
-        let onCapture: (UIImage) -> Void
-        init(onCapture: @escaping (UIImage) -> Void) { self.onCapture = onCapture }
+// ─────────────────────────────────────────
+// MARK: Stable Document Camera (AVFoundation)
+// ─────────────────────────────────────────
+final class StableDocumentCameraViewController: UIViewController {
+    private let session = AVCaptureSession()
+    private let photoOutput = AVCapturePhotoOutput()
+    private let sessionQueue = DispatchQueue(label: "com.goldmirror.document-camera.session", qos: .userInitiated)
+    private let onCapture: (UIImage) -> Void
+    private let onCancel: () -> Void
+    private let onError: (String) -> Void
+    private var previewLayer: AVCaptureVideoPreviewLayer?
+    private var isSessionConfigured = false
+    private var activePhotoProcessors: [UUID: PhotoCaptureProcessor] = [:]
 
-        // DataScanner: アイテムタップ時にビューをスナップショット撮影
-        func dataScanner(_ dataScanner: DataScannerViewController,
-                         didTapOn item: RecognizedItem) {
-            // view は UIView? なので安全にアンラップ
-            guard let view = dataScanner.viewIfLoaded else { return }
-            let bounds = view.bounds
-            let renderer = UIGraphicsImageRenderer(size: bounds.size)
-            let image = renderer.image { _ in
-                view.drawHierarchy(in: bounds, afterScreenUpdates: true)
+    private lazy var captureButton: UIButton = {
+        let button = UIButton(type: .system)
+        button.translatesAutoresizingMaskIntoConstraints = false
+        button.backgroundColor = UIColor(red: 212/255, green: 175/255, blue: 55/255, alpha: 1)
+        button.tintColor = .black
+        button.layer.cornerRadius = 34
+        button.layer.shadowColor = UIColor(red: 212/255, green: 175/255, blue: 55/255, alpha: 1).cgColor
+        button.layer.shadowOpacity = 0.35
+        button.layer.shadowRadius = 16
+        button.setImage(UIImage(systemName: "camera.fill"), for: .normal)
+        button.addTarget(self, action: #selector(capturePhoto), for: .touchUpInside)
+        return button
+    }()
+
+    private lazy var cancelButton: UIButton = {
+        let button = UIButton(type: .system)
+        button.translatesAutoresizingMaskIntoConstraints = false
+        button.tintColor = UIColor(red: 212/255, green: 175/255, blue: 55/255, alpha: 1)
+        button.setImage(UIImage(systemName: "xmark"), for: .normal)
+        button.backgroundColor = UIColor.black.withAlphaComponent(0.55)
+        button.layer.cornerRadius = 22
+        button.addTarget(self, action: #selector(cancel), for: .touchUpInside)
+        return button
+    }()
+
+    init(
+        onCapture: @escaping (UIImage) -> Void,
+        onCancel: @escaping () -> Void,
+        onError: @escaping (String) -> Void
+    ) {
+        self.onCapture = onCapture
+        self.onCancel = onCancel
+        self.onError = onError
+        super.init(nibName: nil, bundle: nil)
+        modalPresentationStyle = .fullScreen
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        view.backgroundColor = .black
+        configureUI()
+        startSession()
+    }
+
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        previewLayer?.frame = view.bounds
+    }
+
+    override func viewWillDisappear(_ animated: Bool) {
+        super.viewWillDisappear(animated)
+        stopSession()
+    }
+
+    private func configureUI() {
+        let overlay = ScannerOverlayView()
+        overlay.translatesAutoresizingMaskIntoConstraints = false
+        overlay.backgroundColor = .clear
+        view.addSubview(overlay)
+        view.addSubview(captureButton)
+        view.addSubview(cancelButton)
+
+        NSLayoutConstraint.activate([
+            overlay.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            overlay.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            overlay.topAnchor.constraint(equalTo: view.topAnchor),
+            overlay.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+
+            captureButton.widthAnchor.constraint(equalToConstant: 68),
+            captureButton.heightAnchor.constraint(equalToConstant: 68),
+            captureButton.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            captureButton.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -28),
+
+            cancelButton.widthAnchor.constraint(equalToConstant: 44),
+            cancelButton.heightAnchor.constraint(equalToConstant: 44),
+            cancelButton.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20),
+            cancelButton.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 16)
+        ])
+    }
+
+    private func startSession() {
+        sessionQueue.async { [weak self] in
+            guard let self else { return }
+            if !self.isSessionConfigured {
+                self.configureSession()
             }
-            DispatchQueue.main.async { self.onCapture(image) }
+            guard self.isSessionConfigured, !self.session.isRunning else { return }
+            self.session.startRunning()
+        }
+    }
+
+    private func configureSession() {
+        session.beginConfiguration()
+        session.sessionPreset = .photo
+        defer { session.commitConfiguration() }
+
+        guard
+            let camera = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back),
+            let input = try? AVCaptureDeviceInput(device: camera),
+            session.canAddInput(input),
+            session.canAddOutput(photoOutput)
+        else {
+            DispatchQueue.main.async { [weak self] in
+                self?.onError("カメラの初期化に失敗しました。")
+            }
+            return
         }
 
-        // UIImagePicker fallback
-        func imagePickerController(_ picker: UIImagePickerController,
-                                   didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey: Any]) {
-            if let image = info[.originalImage] as? UIImage {
-                picker.dismiss(animated: true) { self.onCapture(image) }
+        session.addInput(input)
+        session.addOutput(photoOutput)
+        isSessionConfigured = true
+
+        DispatchQueue.main.async { [weak self] in
+            guard let self, self.previewLayer == nil else { return }
+            let layer = AVCaptureVideoPreviewLayer(session: self.session)
+            layer.videoGravity = .resizeAspectFill
+            layer.frame = self.view.bounds
+            self.view.layer.insertSublayer(layer, at: 0)
+            self.previewLayer = layer
+        }
+    }
+
+    private func stopSession() {
+        sessionQueue.async { [weak self] in
+            guard let self, self.session.isRunning else { return }
+            self.session.stopRunning()
+        }
+    }
+
+    @objc private func capturePhoto() {
+        captureButton.isEnabled = false
+        captureButton.alpha = 0.55
+
+        let settings = AVCapturePhotoSettings()
+        settings.flashMode = .auto
+        let processor = PhotoCaptureProcessor { [weak self] id, result in
+            guard let self else { return }
+            self.activePhotoProcessors[id] = nil
+            switch result {
+            case .success(let image):
+                self.stopSession()
+                self.dismiss(animated: true) {
+                    self.onCapture(image)
+                }
+            case .failure(let message):
+                self.captureButton.isEnabled = true
+                self.captureButton.alpha = 1
+                self.onError(message)
             }
         }
-        func imagePickerControllerDidCancel(_ picker: UIImagePickerController) {
-            picker.dismiss(animated: true)
+        activePhotoProcessors[processor.id] = processor
+
+        sessionQueue.async { [weak self] in
+            guard let self else { return }
+            self.photoOutput.capturePhoto(with: settings, delegate: processor)
+        }
+    }
+
+    @objc private func cancel() {
+        stopSession()
+        onCancel()
+        dismiss(animated: true)
+    }
+
+}
+
+nonisolated final class PhotoCaptureProcessor: NSObject, AVCapturePhotoCaptureDelegate {
+    let id = UUID()
+    enum CaptureResult {
+        case success(UIImage)
+        case failure(String)
+    }
+
+    private let completion: (UUID, CaptureResult) -> Void
+
+    init(completion: @escaping (UUID, CaptureResult) -> Void) {
+        self.completion = completion
+    }
+
+    func photoOutput(
+        _ output: AVCapturePhotoOutput,
+        didFinishProcessingPhoto photo: AVCapturePhoto,
+        error: Error?
+    ) {
+        if let error {
+            let id = id
+            let completion = completion
+            let message = "撮影に失敗しました: \(error.localizedDescription)"
+            DispatchQueue.main.async {
+                completion(id, .failure(message))
+            }
+            return
+        }
+
+        guard let data = photo.fileDataRepresentation(),
+              let image = UIImage(data: data) else {
+            let id = id
+            let completion = completion
+            DispatchQueue.main.async {
+                completion(id, .failure("撮影画像の読み込みに失敗しました。"))
+            }
+            return
+        }
+
+        let id = id
+        let completion = completion
+        DispatchQueue.main.async {
+            completion(id, .success(image))
         }
     }
 }
@@ -498,7 +713,7 @@ struct LiveDocumentScanner: UIViewControllerRepresentable {
 // ─────────────────────────────────────────
 // MARK: Scanner Overlay View (Gold UI)
 // ─────────────────────────────────────────
-class ScannerOverlayView: UIView {
+final class ScannerOverlayView: UIView {
     override func draw(_ rect: CGRect) {
         guard let ctx = UIGraphicsGetCurrentContext() else { return }
         // 半透明の暗い背景

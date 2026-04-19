@@ -641,7 +641,7 @@ struct CreditCardFormSheet: View {
                         Picker("引き落とし銀行", selection: bankSelectionBinding) {
                             Text("未設定").tag(Optional<UUID>.none)
                             ForEach(dm.bankAccounts) { account in
-                                Text(account.name).tag(Optional(account.id))
+                                Text("\(account.bankName)・\(account.name)").tag(Optional(account.id))
                             }
                         }
                         .tint(Color.gmGold)
