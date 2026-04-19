@@ -257,6 +257,7 @@ struct SubscriptionListSection: View {
 }
 
 struct SubscriptionRow: View {
+    @EnvironmentObject var dm: DataManager
     let sub: Subscription
     let onToggle: () -> Void
     let onEdit: () -> Void
@@ -303,6 +304,11 @@ struct SubscriptionRow: View {
                             .clipShape(Capsule())
                     }
                 }
+
+                Text(dm.paymentSourceLabel(for: sub.paymentSource))
+                    .font(GMFont.caption(10))
+                    .foregroundStyle(Color.gmTextTertiary)
+                    .lineLimit(1)
             }
 
             Spacer()
@@ -374,6 +380,7 @@ struct FixedCostListSection: View {
 }
 
 struct FixedCostRow: View {
+    @EnvironmentObject var dm: DataManager
     let cost: FixedCost
     let onToggle: () -> Void
     let onEdit: () -> Void
@@ -407,6 +414,11 @@ struct FixedCostRow: View {
                         .font(GMFont.caption(10))
                         .foregroundStyle(Color.gmTextTertiary)
                 }
+
+                Text(dm.paymentSourceLabel(for: cost.paymentSource))
+                    .font(GMFont.caption(10))
+                    .foregroundStyle(Color.gmTextTertiary)
+                    .lineLimit(1)
             }
 
             Spacer()
@@ -516,6 +528,7 @@ struct WasteAnalysisCard: View {
 struct SubscriptionFormSheet: View {
     let sub: Subscription?
     let onSave: (Subscription) -> Void
+    @EnvironmentObject var dm: DataManager
     @Environment(\.dismiss) var dismiss
 
     @State private var name: String = ""
@@ -524,6 +537,7 @@ struct SubscriptionFormSheet: View {
     @State private var cycle: Subscription.BillingCycle = .monthly
     @State private var hasEndDate = false
     @State private var endDate: Date = Date()
+    @State private var paymentSource: RecurringPaymentSource?
 
     var body: some View {
         NavigationStack {
@@ -540,6 +554,8 @@ struct SubscriptionFormSheet: View {
                         Text("基本情報").font(GMFont.caption(12)).foregroundStyle(Color.gmGold)
                     }
                     Section {
+                        PaymentSourcePicker(selection: $paymentSource)
+                            .environmentObject(dm)
                         Picker("支払いサイクル", selection: $cycle) {
                             ForEach(Subscription.BillingCycle.allCases, id: \.self) { c in
                                 Text(c.rawValue).tag(c)
@@ -585,6 +601,7 @@ struct SubscriptionFormSheet: View {
         amountText     = "\(Int(s.amount))"
         billingDayText = "\(s.billingDay)"
         cycle          = s.billingCycle
+        paymentSource  = s.paymentSource
         if let end = s.contractEndDate { hasEndDate = true; endDate = end }
     }
 
@@ -595,7 +612,8 @@ struct SubscriptionFormSheet: View {
             amount: Double(amountText) ?? 0,
             billingDay: Int(billingDayText) ?? 1,
             billingCycle: cycle,
-            contractEndDate: hasEndDate ? endDate : nil
+            contractEndDate: hasEndDate ? endDate : nil,
+            paymentSource: paymentSource
         )
         onSave(updated)
         dismiss()
@@ -608,6 +626,7 @@ struct SubscriptionFormSheet: View {
 struct FixedCostFormSheet: View {
     let cost: FixedCost?
     let onSave: (FixedCost) -> Void
+    @EnvironmentObject var dm: DataManager
     @Environment(\.dismiss) var dismiss
 
     @State private var name: String = ""
@@ -615,6 +634,7 @@ struct FixedCostFormSheet: View {
     @State private var billingDayText: String = "27"
     @State private var category: FixedCostCategory = .other
     @State private var memo: String = ""
+    @State private var paymentSource: RecurringPaymentSource?
 
     var body: some View {
         NavigationStack {
@@ -631,6 +651,8 @@ struct FixedCostFormSheet: View {
                         Text("基本情報").font(GMFont.caption(12)).foregroundStyle(Color.gmGold)
                     }
                     Section {
+                        PaymentSourcePicker(selection: $paymentSource)
+                            .environmentObject(dm)
                         Picker("カテゴリ", selection: $category) {
                             ForEach(FixedCostCategory.allCases, id: \.self) { c in
                                 HStack {
@@ -672,6 +694,7 @@ struct FixedCostFormSheet: View {
         billingDayText = "\(c.billingDay)"
         category       = c.category
         memo           = c.memo
+        paymentSource  = c.paymentSource
     }
 
     private func save() {
@@ -681,10 +704,34 @@ struct FixedCostFormSheet: View {
             amount: Double(amountText) ?? 0,
             billingDay: Int(billingDayText) ?? 27,
             category: category,
-            memo: memo
+            memo: memo,
+            paymentSource: paymentSource
         )
         onSave(updated)
         dismiss()
+    }
+}
+
+struct PaymentSourcePicker: View {
+    @EnvironmentObject var dm: DataManager
+    @Binding var selection: RecurringPaymentSource?
+
+    var body: some View {
+        Picker("支払元", selection: $selection) {
+            Text("未設定").tag(Optional<RecurringPaymentSource>.none)
+
+            ForEach(dm.bankAccounts) { account in
+                Text("銀行: \(account.bankName)・\(account.name)")
+                    .tag(Optional(RecurringPaymentSource(kind: .bankAccount, id: account.id)))
+            }
+
+            ForEach(dm.creditCards) { card in
+                Text("カード: \(card.cardName) ****\(card.cardLastFour)")
+                    .tag(Optional(RecurringPaymentSource(kind: .creditCard, id: card.id)))
+            }
+        }
+        .foregroundStyle(Color.gmTextPrimary)
+        .tint(Color.gmGold)
     }
 }
 

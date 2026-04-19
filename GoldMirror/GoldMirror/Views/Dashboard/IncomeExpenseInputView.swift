@@ -2,6 +2,7 @@
 // Gold Mirror – FAB half-modal for recording income or expense transactions.
 
 import SwiftUI
+import UIKit
 
 // ─────────────────────────────────────────
 // MARK: Transaction Model
@@ -296,19 +297,22 @@ struct IncomeExpenseInputView: View {
 
                         // ── Amount Input ──
                         VStack(spacing: GMSpacing.sm) {
-                            HStack(alignment: .lastTextBaseline, spacing: 4) {
+                            HStack(alignment: .center, spacing: 6) {
                                 Text("¥")
                                     .font(GMFont.display(28, weight: .bold))
                                     .foregroundStyle(transactionType.color)
+                                    .fixedSize(horizontal: true, vertical: false)
+                                    .layoutPriority(2)
 
-                                TextField("0", text: $amountText)
-                                    .font(GMFont.display(42, weight: .bold))
-                                    .foregroundStyle(Color.gmTextPrimary)
-                                    .keyboardType(.numberPad)
-                                    .multilineTextAlignment(.leading)
-                                    .tint(transactionType.color)
+                                StableAmountTextField(
+                                    text: $amountText,
+                                    tintColor: UIColor(transactionType.color)
+                                )
+                                    .frame(height: 56)
+                                    .layoutPriority(1)
                             }
                             .padding(.horizontal, GMSpacing.md)
+                            .frame(maxWidth: .infinity, minHeight: 64, maxHeight: 64, alignment: .leading)
 
                             Rectangle()
                                 .fill(
@@ -320,6 +324,7 @@ struct IncomeExpenseInputView: View {
                                 .frame(height: 1)
                                 .padding(.horizontal, GMSpacing.md)
                         }
+                        .frame(minHeight: 76)
 
                         // ── Category Grid ──
                         VStack(alignment: .leading, spacing: GMSpacing.sm) {
@@ -473,16 +478,19 @@ struct IncomeExpenseInputView: View {
                                             Spacer()
                                         }
                                     } else {
-                                        Picker("振込先（証券口座）", selection: incomeSecuritiesSelectionBinding) {
+                                        Menu {
                                             ForEach(dm.securitiesAccounts) { account in
-                                                Text("\(account.brokerageName)・\(account.name)")
-                                                    .tag(Optional(account.id))
+                                                Button("\(account.brokerageName)・\(account.name)") {
+                                                    selectedIncomeSecuritiesAccountID = account.id
+                                                }
                                             }
+                                        } label: {
+                                            SelectionMenuRow(
+                                                title: selectedIncomeSecuritiesAccountName,
+                                                placeholder: "証券口座を選択"
+                                            )
                                         }
-                                        .pickerStyle(.menu)
-                                        .tint(Color.gmGold)
-                                        .foregroundStyle(Color.gmTextPrimary)
-                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                        .buttonStyle(.plain)
                                     }
                                 } else if dm.bankAccounts.isEmpty {
                                     HStack(spacing: GMSpacing.sm) {
@@ -494,16 +502,19 @@ struct IncomeExpenseInputView: View {
                                         Spacer()
                                     }
                                 } else {
-                                    Picker("振込先（銀行口座）", selection: incomeBankSelectionBinding) {
+                                    Menu {
                                         ForEach(dm.bankAccounts) { account in
-                                            Text("\(account.bankName)・\(account.name)")
-                                                .tag(Optional(account.id))
+                                            Button("\(account.bankName)・\(account.name)") {
+                                                selectedIncomeBankAccountID = account.id
+                                            }
                                         }
+                                    } label: {
+                                        SelectionMenuRow(
+                                            title: selectedIncomeBankAccountName,
+                                            placeholder: "銀行口座を選択"
+                                        )
                                     }
-                                    .pickerStyle(.menu)
-                                    .tint(Color.gmGold)
-                                    .foregroundStyle(Color.gmTextPrimary)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .buttonStyle(.plain)
                                 }
                             }
                             .padding(.horizontal, GMSpacing.md)
@@ -574,8 +585,11 @@ struct IncomeExpenseInputView: View {
                         .padding(.horizontal, GMSpacing.md)
                         .padding(.bottom, GMSpacing.xl)
                     }
+                    .frame(maxWidth: .infinity)
                 }
+                .scrollDismissesKeyboard(.immediately)
             }
+            .ignoresSafeArea(.keyboard, edges: .bottom)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .principal) {
@@ -619,6 +633,12 @@ struct IncomeExpenseInputView: View {
         .onChange(of: selectedCategory) { _, _ in
             ensureIncomeDestinationSelection()
             ensureAssetAdjustmentSelection()
+        }
+        .onChange(of: amountText) { _, newValue in
+            let sanitized = String(newValue.filter(\.isNumber).prefix(12))
+            if sanitized != newValue {
+                amountText = sanitized
+            }
         }
         .environment(\.locale, Locale(identifier: "ja_JP"))
     }
@@ -694,6 +714,22 @@ struct IncomeExpenseInputView: View {
 
     private var incomeDestinationIcon: String {
         isInvestmentIncome ? "chart.line.uptrend.xyaxis" : "building.columns.fill"
+    }
+
+    private var selectedIncomeBankAccountName: String {
+        guard let id = incomeBankSelectionBinding.wrappedValue,
+              let account = dm.bankAccounts.first(where: { $0.id == id }) else {
+            return ""
+        }
+        return "\(account.bankName)・\(account.name)"
+    }
+
+    private var selectedIncomeSecuritiesAccountName: String {
+        guard let id = incomeSecuritiesSelectionBinding.wrappedValue,
+              let account = dm.securitiesAccounts.first(where: { $0.id == id }) else {
+            return ""
+        }
+        return "\(account.brokerageName)・\(account.name)"
     }
 
     private var canSave: Bool {
@@ -931,12 +967,76 @@ struct GMInputSection<Content: View>: View {
             }
             content()
                 .padding(GMSpacing.md)
+                .frame(maxWidth: .infinity, minHeight: 52, alignment: .leading)
                 .background(Color.gmSurface)
                 .clipShape(RoundedRectangle(cornerRadius: GMRadius.md))
                 .overlay(
                     RoundedRectangle(cornerRadius: GMRadius.md)
                         .strokeBorder(Color.gmGoldDim.opacity(0.3), lineWidth: 0.5)
                 )
+        }
+    }
+}
+
+struct StableAmountTextField: UIViewRepresentable {
+    @Binding var text: String
+    let tintColor: UIColor
+
+    func makeUIView(context: Context) -> UITextField {
+        let textField = UITextField()
+        textField.delegate = context.coordinator
+        textField.keyboardType = .numberPad
+        textField.textAlignment = .left
+        textField.textColor = UIColor(Color.gmTextPrimary)
+        textField.tintColor = tintColor
+        textField.font = UIFont.systemFont(ofSize: 42, weight: .bold)
+        textField.adjustsFontSizeToFitWidth = true
+        textField.minimumFontSize = 24
+        textField.placeholder = "0"
+        textField.autocorrectionType = .no
+        textField.autocapitalizationType = .none
+        textField.borderStyle = .none
+        textField.backgroundColor = .clear
+        textField.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        textField.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        textField.inputAssistantItem.leadingBarButtonGroups = []
+        textField.inputAssistantItem.trailingBarButtonGroups = []
+        textField.addTarget(context.coordinator, action: #selector(Coordinator.textChanged(_:)), for: .editingChanged)
+        return textField
+    }
+
+    func updateUIView(_ textField: UITextField, context: Context) {
+        if textField.text != text {
+            textField.text = text
+        }
+        textField.tintColor = tintColor
+    }
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(text: $text)
+    }
+
+    final class Coordinator: NSObject, UITextFieldDelegate {
+        @Binding var text: String
+
+        init(text: Binding<String>) {
+            _text = text
+        }
+
+        @objc func textChanged(_ sender: UITextField) {
+            text = sender.text ?? ""
+        }
+
+        func textField(
+            _ textField: UITextField,
+            shouldChangeCharactersIn range: NSRange,
+            replacementString string: String
+        ) -> Bool {
+            guard string.allSatisfy(\.isNumber) else { return string.isEmpty }
+            let current = textField.text ?? ""
+            guard let textRange = Range(range, in: current) else { return false }
+            let updated = current.replacingCharacters(in: textRange, with: string)
+            return updated.count <= 12
         }
     }
 }
@@ -953,6 +1053,26 @@ struct EmptyTargetAccountRow: View {
                 .foregroundStyle(Color.gmTextTertiary)
             Spacer()
         }
+    }
+}
+
+struct SelectionMenuRow: View {
+    let title: String
+    let placeholder: String
+
+    var body: some View {
+        HStack(spacing: GMSpacing.sm) {
+            Text(title.isEmpty ? placeholder : title)
+                .font(GMFont.body(15, weight: .medium))
+                .foregroundStyle(title.isEmpty ? Color.gmTextTertiary : Color.gmTextPrimary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
+            Spacer(minLength: GMSpacing.sm)
+            Image(systemName: "chevron.down")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(Color.gmGold)
+        }
+        .contentShape(Rectangle())
     }
 }
 

@@ -610,7 +610,7 @@ extension DataManager {
             ))
         }
         // 固定費
-        for cost in fixedCosts where cost.isActive && cost.billingDay == day {
+        for cost in fixedCosts where cost.isActive && isRecurringPaymentDue(billingDay: cost.billingDay, on: date) {
             expenses.append(ScheduledExpense(
                 name: cost.name,
                 amount: cost.amount,
@@ -620,7 +620,7 @@ extension DataManager {
             ))
         }
         // サブスク
-        for sub in subscriptions where sub.isActive && sub.billingDay == day && sub.billingCycle == .monthly {
+        for sub in subscriptions where sub.isActive && sub.billingCycle == .monthly && isRecurringPaymentDue(billingDay: sub.billingDay, on: date) {
             expenses.append(ScheduledExpense(
                 name: sub.name,
                 amount: sub.monthlyCost,
@@ -657,9 +657,11 @@ extension DataManager {
                 let scheduleDay = cal.component(.day, from: schedule.paymentDate)
                 return scheduleDay == d && cal.isDate(schedule.paymentDate, equalTo: month, toGranularity: .month)
             }.reduce(0) { $0 + $1.amount }
-            let dFixed = fixedCosts.filter { $0.isActive && $0.billingDay == d }.reduce(0) { $0 + $1.amount }
-            let dSub   = subscriptions.filter { $0.isActive && $0.billingDay == d && $0.billingCycle == .monthly }.reduce(0) { $0 + $1.monthlyCost }
-            return sum + dCards + dFixed + dSub
+            var dComps = cal.dateComponents([.year, .month], from: month)
+            dComps.day = d
+            let currentDate = cal.date(from: dComps) ?? month
+            let dRecurringBank = recurringBankWithdrawalAmount(on: currentDate)
+            return sum + dCards + dRecurringBank
         }
 
         let projectedCash   = max(totalBankBalance - transactionDelta(after: dateStart) - cumulativeExpenses, 0)

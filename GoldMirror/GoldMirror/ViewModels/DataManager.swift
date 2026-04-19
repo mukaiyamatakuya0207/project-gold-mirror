@@ -89,7 +89,7 @@ final class DataManager: ObservableObject {
     }
 
     var totalMonthlyCardBilling: Double {
-        cardPaymentSchedules(in: Date()).reduce(0) { $0 + $1.amount }
+        creditCards.reduce(0) { $0 + currentMonthBillingAmount(for: $1) }
     }
 
     /// 月間固定支出合計（固定費 + サブスク + カード）
@@ -217,22 +217,16 @@ final class DataManager: ObservableObject {
                 }
             }
 
-            // 固定費引き落とし日
-            for cost in fixedCosts where cost.isActive {
-                if cost.billingDay == dayOfMonth {
-                    cashBalance -= cost.amount
-                    isEvent = true
-                    eventLabels.append(cost.name)
-                }
-            }
-
-            // サブスク引き落とし日
-            for sub in subscriptions where sub.isActive {
-                if sub.billingDay == dayOfMonth && sub.billingCycle == .monthly {
-                    cashBalance -= sub.monthlyCost
-                    isEvent = true
-                    eventLabels.append(sub.name)
-                }
+            // 固定費・サブスクの銀行引き落とし（休日は翌営業日へ補正）
+            let previousDay = calendar.date(byAdding: .day, value: -1, to: dateStart) ?? dateStart
+            for withdrawal in recurringBankWithdrawals(
+                fromExclusive: previousDay,
+                throughInclusive: dateStart,
+                calendar: calendar
+            ) {
+                cashBalance -= withdrawal.amount
+                isEvent = true
+                eventLabels.append(withdrawal.name)
             }
 
             points.append(ProjectionPoint(
@@ -382,6 +376,7 @@ final class DataManager: ObservableObject {
             : backup.expenseCategories
         transactions = backup.transactions
         saveExpenseCategories()
+        syncAllCreditCardBillingAmounts()
     }
 
     private func loadExpenseCategories() {
@@ -404,21 +399,25 @@ final class DataManager: ObservableObject {
     // ─────────────────────────────────────────
     func addFixedCost(_ cost: FixedCost) {
         fixedCosts.append(cost)
+        syncAllCreditCardBillingAmounts()
     }
 
     func updateFixedCost(_ cost: FixedCost) {
         if let idx = fixedCosts.firstIndex(where: { $0.id == cost.id }) {
             fixedCosts[idx] = cost
+            syncAllCreditCardBillingAmounts()
         }
     }
 
     func deleteFixedCost(at offsets: IndexSet) {
         fixedCosts.remove(atOffsets: offsets)
+        syncAllCreditCardBillingAmounts()
     }
 
     func toggleFixedCost(_ cost: FixedCost) {
         if let idx = fixedCosts.firstIndex(where: { $0.id == cost.id }) {
             fixedCosts[idx].isActive.toggle()
+            syncAllCreditCardBillingAmounts()
         }
     }
 
@@ -427,21 +426,25 @@ final class DataManager: ObservableObject {
     // ─────────────────────────────────────────
     func addSubscription(_ sub: Subscription) {
         subscriptions.append(sub)
+        syncAllCreditCardBillingAmounts()
     }
 
     func updateSubscription(_ sub: Subscription) {
         if let idx = subscriptions.firstIndex(where: { $0.id == sub.id }) {
             subscriptions[idx] = sub
+            syncAllCreditCardBillingAmounts()
         }
     }
 
     func deleteSubscription(at offsets: IndexSet) {
         subscriptions.remove(atOffsets: offsets)
+        syncAllCreditCardBillingAmounts()
     }
 
     func toggleSubscription(_ sub: Subscription) {
         if let idx = subscriptions.firstIndex(where: { $0.id == sub.id }) {
             subscriptions[idx].isActive.toggle()
+            syncAllCreditCardBillingAmounts()
         }
     }
 
@@ -610,7 +613,8 @@ final class DataManager: ObservableObject {
     }
 
     func currentMonthBillingAmount(for card: CreditCard) -> Double {
-        cardPaymentSchedules(in: Date(), cardID: card.id).reduce(0) { $0 + $1.amount }
+        let manualSchedules = cardPaymentSchedules(in: Date(), cardID: card.id).reduce(0) { $0 + $1.amount }
+        return manualSchedules + recurringCreditCardCharges(in: Date(), cardID: card.id)
     }
 
     func cardPaymentSchedules(for card: CreditCard) -> [CardPaymentSchedule] {
@@ -625,6 +629,57 @@ final class DataManager: ObservableObject {
             return "未設定"
         }
         return account.name
+    }
+
+    func paymentSourceLabel(for source: RecurringPaymentSource?) -> String {
+        guard let source else { return "支払元未設定" }
+        switch source.kind {
+        case .bankAccount:
+            guard let account = bankAccounts.first(where: { $0.id == source.id }) else {
+                return "銀行口座（未登録）"
+            }
+            return "\(account.bankName)・\(account.name)"
+        case .creditCard:
+            guard let card = creditCards.first(where: { $0.id == source.id }) else {
+                return "カード（未登録）"
+            }
+            return "\(card.cardName) ****\(card.cardLastFour)"
+        }
+    }
+
+    func adjustedBusinessDate(billingDay: Int, in month: Date) -> Date {
+        let calendar = Self.jpCalendar
+        var comps = calendar.dateComponents([.year, .month], from: month)
+        let dayRange = calendar.range(of: .day, in: .month, for: month) ?? 1..<29
+        comps.day = min(max(billingDay, 1), dayRange.count)
+        var date = calendar.startOfDay(for: calendar.date(from: comps) ?? month)
+        while !isJapaneseBusinessDay(date) {
+            date = calendar.date(byAdding: .day, value: 1, to: date) ?? date
+        }
+        return date
+    }
+
+    func isJapaneseBusinessDay(_ date: Date) -> Bool {
+        let calendar = Self.jpCalendar
+        guard !calendar.isDateInWeekend(date) else { return false }
+        return !isJapaneseHoliday(date)
+    }
+
+    func isRecurringPaymentDue(billingDay: Int, on date: Date) -> Bool {
+        let calendar = Self.jpCalendar
+        return calendar.isDate(adjustedBusinessDate(billingDay: billingDay, in: date), inSameDayAs: date)
+    }
+
+    func recurringBankWithdrawalAmount(on date: Date) -> Double {
+        let calendar = Self.jpCalendar
+        let dateStart = calendar.startOfDay(for: date)
+        let previousDay = calendar.date(byAdding: .day, value: -1, to: dateStart) ?? dateStart
+        return recurringBankWithdrawals(
+            fromExclusive: previousDay,
+            throughInclusive: dateStart,
+            calendar: calendar
+        )
+        .reduce(0) { $0 + $1.amount }
     }
 
     private func applyTransactionToAccountBalance(_ transaction: Transaction) {
@@ -697,6 +752,10 @@ final class DataManager: ObservableObject {
             }
             bankBalances[linkedBankID, default: 0] -= schedule.amount * direction
         }
+
+        for withdrawal in recurringBankWithdrawals(fromExclusive: start, throughInclusive: end, calendar: calendar) {
+            bankBalances[withdrawal.bankAccountID, default: 0] -= withdrawal.amount * direction
+        }
     }
 
     private func applyEstimatedTransaction(
@@ -748,6 +807,201 @@ final class DataManager: ObservableObject {
             let matchesMonth = calendar.isDate(schedule.paymentDate, equalTo: month, toGranularity: .month)
             let matchesCard = cardID.map { $0 == schedule.cardID } ?? true
             return matchesMonth && matchesCard
+        }
+    }
+
+    private struct RecurringPaymentOccurrence {
+        let id: UUID
+        let date: Date
+        let amount: Double
+        let source: RecurringPaymentSource?
+        let name: String
+    }
+
+    private struct RecurringBankWithdrawal {
+        let date: Date
+        let amount: Double
+        let bankAccountID: UUID
+        let name: String
+    }
+
+    private func recurringPaymentOccurrences(in month: Date) -> [RecurringPaymentOccurrence] {
+        let calendar = Self.jpCalendar
+        let monthStart = calendar.date(from: calendar.dateComponents([.year, .month], from: month)) ?? month
+        var occurrences: [RecurringPaymentOccurrence] = []
+
+        for cost in fixedCosts where cost.isActive {
+            occurrences.append(
+                RecurringPaymentOccurrence(
+                    id: cost.id,
+                    date: adjustedBusinessDate(billingDay: cost.billingDay, in: monthStart),
+                    amount: cost.amount,
+                    source: cost.paymentSource,
+                    name: cost.name
+                )
+            )
+        }
+
+        for sub in subscriptions where sub.isActive && sub.billingCycle == .monthly {
+            occurrences.append(
+                RecurringPaymentOccurrence(
+                    id: sub.id,
+                    date: adjustedBusinessDate(billingDay: sub.billingDay, in: monthStart),
+                    amount: sub.monthlyCost,
+                    source: sub.paymentSource,
+                    name: sub.name
+                )
+            )
+        }
+
+        return occurrences
+    }
+
+    private func recurringPaymentOccurrences(
+        fromExclusive start: Date,
+        throughInclusive end: Date,
+        calendar: Calendar
+    ) -> [RecurringPaymentOccurrence] {
+        guard start < end else { return [] }
+        let startMonth = calendar.date(
+            byAdding: .month,
+            value: -1,
+            to: calendar.date(from: calendar.dateComponents([.year, .month], from: start)) ?? start
+        ) ?? start
+        let endMonth = calendar.date(
+            byAdding: .month,
+            value: 1,
+            to: calendar.date(from: calendar.dateComponents([.year, .month], from: end)) ?? end
+        ) ?? end
+
+        var cursor = startMonth
+        var results: [RecurringPaymentOccurrence] = []
+        var seen: Set<String> = []
+
+        while cursor <= endMonth {
+            for occurrence in recurringPaymentOccurrences(in: cursor) {
+                let day = calendar.startOfDay(for: occurrence.date)
+                guard day > start && day <= end else { continue }
+                let key = "\(occurrence.id)-\(day.timeIntervalSince1970)"
+                guard seen.insert(key).inserted else { continue }
+                results.append(occurrence)
+            }
+            cursor = calendar.date(byAdding: .month, value: 1, to: cursor) ?? endMonth.addingTimeInterval(1)
+        }
+
+        return results
+    }
+
+    private func recurringBankWithdrawals(
+        fromExclusive start: Date,
+        throughInclusive end: Date,
+        calendar: Calendar
+    ) -> [RecurringBankWithdrawal] {
+        recurringPaymentOccurrences(fromExclusive: start, throughInclusive: end, calendar: calendar)
+            .compactMap { occurrence in
+                switch occurrence.source?.kind {
+                case .bankAccount, .none:
+                    let bankID = occurrence.source?.id ?? bankAccounts.first?.id
+                    guard let bankID else { return nil }
+                    return RecurringBankWithdrawal(
+                        date: occurrence.date,
+                        amount: occurrence.amount,
+                        bankAccountID: bankID,
+                        name: occurrence.name
+                    )
+                case .creditCard:
+                    guard let cardID = occurrence.source?.id,
+                          let card = creditCards.first(where: { $0.id == cardID }),
+                          let bankID = card.linkedBankAccountID else {
+                        return nil
+                    }
+                    let withdrawalDate = adjustedBusinessDate(billingDay: card.billingDay, in: occurrence.date)
+                    let withdrawalDay = calendar.startOfDay(for: withdrawalDate)
+                    guard withdrawalDay > start && withdrawalDay <= end else { return nil }
+                    return RecurringBankWithdrawal(
+                        date: withdrawalDate,
+                        amount: occurrence.amount,
+                        bankAccountID: bankID,
+                        name: occurrence.name
+                    )
+                }
+            }
+    }
+
+    private func recurringCreditCardCharges(in month: Date, cardID: UUID) -> Double {
+        recurringPaymentOccurrences(in: month)
+            .filter { occurrence in
+                occurrence.source?.kind == .creditCard && occurrence.source?.id == cardID
+            }
+            .reduce(0) { $0 + $1.amount }
+    }
+
+    private func isJapaneseHoliday(_ date: Date) -> Bool {
+        isBaseJapaneseHoliday(date) || isSubstituteHoliday(date)
+    }
+
+    private func isBaseJapaneseHoliday(_ date: Date) -> Bool {
+        let calendar = Self.jpCalendar
+        let comps = calendar.dateComponents([.year, .month, .day, .weekday], from: date)
+        guard let year = comps.year,
+              let month = comps.month,
+              let day = comps.day,
+              let weekday = comps.weekday else {
+            return false
+        }
+
+        switch (month, day) {
+        case (1, 1), (2, 11), (2, 23), (4, 29), (5, 3), (5, 4), (5, 5), (8, 11), (11, 3), (11, 23):
+            return true
+        default:
+            break
+        }
+
+        if month == 1 && weekday == 2 && nthWeekday(in: date, calendar: calendar) == 2 { return true }
+        if month == 7 && weekday == 2 && nthWeekday(in: date, calendar: calendar) == 3 { return true }
+        if month == 9 && weekday == 2 && nthWeekday(in: date, calendar: calendar) == 3 { return true }
+        if month == 10 && weekday == 2 && nthWeekday(in: date, calendar: calendar) == 2 { return true }
+
+        return vernalEquinoxDay(for: year) == day && month == 3
+            || autumnEquinoxDay(for: year) == day && month == 9
+    }
+
+    private func isSubstituteHoliday(_ date: Date) -> Bool {
+        let calendar = Self.jpCalendar
+        guard !calendar.isDateInWeekend(date) else { return false }
+
+        var cursor = calendar.date(byAdding: .day, value: -1, to: date)
+        while let candidate = cursor {
+            if !isBaseJapaneseHoliday(candidate) { return false }
+            if calendar.component(.weekday, from: candidate) == 1 { return true }
+            cursor = calendar.date(byAdding: .day, value: -1, to: candidate)
+        }
+        return false
+    }
+
+    private func nthWeekday(in date: Date, calendar: Calendar) -> Int {
+        ((calendar.component(.day, from: date) - 1) / 7) + 1
+    }
+
+    private func vernalEquinoxDay(for year: Int) -> Int {
+        switch year {
+        case 2024, 2025, 2028, 2029: return 20
+        case 2026, 2027, 2030: return 20
+        default: return 20
+        }
+    }
+
+    private func autumnEquinoxDay(for year: Int) -> Int {
+        switch year {
+        case 2024, 2028: return 22
+        case 2025, 2026, 2027, 2029, 2030: return 23
+        default: return 23
+        }
+    }
+
+    private func syncAllCreditCardBillingAmounts() {
+        for cardID in creditCards.map(\.id) {
+            syncCardBillingAmount(for: cardID)
         }
     }
 

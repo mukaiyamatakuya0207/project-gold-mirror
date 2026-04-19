@@ -42,6 +42,26 @@ enum FixedCostCategory: String, CaseIterable, Codable {
 }
 
 // ─────────────────────────────────────────
+// MARK: Recurring Payment Source
+// ─────────────────────────────────────────
+enum RecurringPaymentSourceKind: String, Codable {
+    case bankAccount
+    case creditCard
+
+    var label: String {
+        switch self {
+        case .bankAccount: return "銀行口座"
+        case .creditCard: return "クレジットカード"
+        }
+    }
+}
+
+struct RecurringPaymentSource: Codable, Hashable {
+    var kind: RecurringPaymentSourceKind
+    var id: UUID
+}
+
+// ─────────────────────────────────────────
 // MARK: Fixed Cost
 // ─────────────────────────────────────────
 struct FixedCost: Identifiable, Codable {
@@ -52,6 +72,7 @@ struct FixedCost: Identifiable, Codable {
     var category: FixedCostCategory
     var isActive: Bool          // 有効 / 無効
     var memo: String            // メモ
+    var paymentSource: RecurringPaymentSource?
 
     init(
         id: UUID = UUID(),
@@ -60,7 +81,8 @@ struct FixedCost: Identifiable, Codable {
         billingDay: Int,
         category: FixedCostCategory,
         isActive: Bool = true,
-        memo: String = ""
+        memo: String = "",
+        paymentSource: RecurringPaymentSource? = nil
     ) {
         self.id = id
         self.name = name
@@ -69,6 +91,7 @@ struct FixedCost: Identifiable, Codable {
         self.category = category
         self.isActive = isActive
         self.memo = memo
+        self.paymentSource = paymentSource
     }
 }
 
@@ -85,6 +108,7 @@ struct Subscription: Identifiable, Codable {
     var iconName: String        // SF Symbol
     var accentColorHex: String  // アクセントカラー
     var isActive: Bool
+    var paymentSource: RecurringPaymentSource?
 
     enum BillingCycle: String, CaseIterable, Codable {
         case monthly = "月払い"
@@ -129,7 +153,8 @@ struct Subscription: Identifiable, Codable {
         contractEndDate: Date? = nil,
         iconName: String = "play.rectangle.fill",
         accentColorHex: String = "#CE93D8",
-        isActive: Bool = true
+        isActive: Bool = true,
+        paymentSource: RecurringPaymentSource? = nil
     ) {
         self.id = id
         self.name = name
@@ -140,6 +165,7 @@ struct Subscription: Identifiable, Codable {
         self.iconName = iconName
         self.accentColorHex = accentColorHex
         self.isActive = isActive
+        self.paymentSource = paymentSource
     }
 }
 
